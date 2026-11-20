@@ -36,7 +36,8 @@ namespace Dsk.Weather.Tests
                 ("FavoriteLocationCycleHelper", TestFavoriteLocationCycle),
                 ("WeatherAlertsEvaluationAndSeverity", TestWeatherAlertsEvaluationAndSeverity),
                 ("DefaultStyleCheckAndResetHelper", TestDefaultStyleCheckAndReset),
-                ("HourlyStripAcrossAllLayouts", TestHourlyStripAcrossAllLayouts)
+                ("HourlyStripAcrossAllLayouts", TestHourlyStripAcrossAllLayouts),
+                ("ForecastDrawerDynamicAtmosphere", TestForecastDrawerDynamicAtmosphere)
             };
 
             int failures = 0;
@@ -803,6 +804,66 @@ namespace Dsk.Weather.Tests
                 next.ShowHourlyStrip = false;
                 window.ApplySettings(next, refreshWeather: false);
                 AssertEqual(System.Windows.Visibility.Collapsed, window.CardHourlyContainer.Visibility, "Striscia 24h nascosta su Material Compatto se ShowHourlyStrip = false");
+            }
+            finally
+            {
+                window?.Close();
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
+        }
+
+        private static void TestForecastDrawerDynamicAtmosphere()
+        {
+            if (System.Windows.Application.Current is null)
+            {
+                var app = new Dsk.Weather.App();
+                app.InitializeComponent();
+            }
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "DskWeatherTests_DrawerAtmosphere_" + Guid.NewGuid().ToString("N"));
+            Dsk.Weather.Windows.WidgetWindow? window = null;
+            try
+            {
+                var settingsService = new SettingsService(tempDir);
+                var settings = new WidgetSettings
+                {
+                    EnableDynamicAtmosphere = true,
+                    PinMode = WindowPinMode.BottomMost,
+                    LayoutStyle = WidgetLayoutStyle.PixelCard
+                };
+                settings.AddOrSelectLocation("Serramanna", "Italia", 39.42335, 8.92243);
+
+                window = new Dsk.Weather.Windows.WidgetWindow(
+                    settings,
+                    settingsService,
+                    new WeatherService(),
+                    new MaterialColorService(),
+                    new DesktopPinService(),
+                    new AutostartService(),
+                    () => { },
+                    () => { });
+
+                window.SetAnimationPreview(WeatherIconKind.Rain);
+                AssertTrue(
+                    window.ForecastDrawer.Background is LinearGradientBrush,
+                    "ForecastDrawer deve usare LinearGradientBrush quando EnableDynamicAtmosphere = true su Card Completa");
+
+                WidgetSettings minimal = settings.Clone();
+                minimal.LayoutStyle = WidgetLayoutStyle.PixelMinimalTransparent;
+                window.ApplySettings(minimal, refreshWeather: false);
+                AssertTrue(
+                    window.ForecastDrawer.Background is LinearGradientBrush,
+                    "ForecastDrawer deve usare LinearGradientBrush anche con layout Minimal Trasparente");
+
+                WidgetSettings disabled = minimal.Clone();
+                disabled.EnableDynamicAtmosphere = false;
+                window.ApplySettings(disabled, refreshWeather: false);
+                AssertTrue(
+                    window.ForecastDrawer.Background is SolidColorBrush,
+                    "ForecastDrawer deve tornare a SolidColorBrush quando EnableDynamicAtmosphere = false");
             }
             finally
             {

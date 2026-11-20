@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-19%2F19%20Passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-20%2F20%20Passing-brightgreen?style=flat-square)
 
 Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Allerte Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
 
@@ -16,10 +16,10 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.3.3`)
+## Funzionalità Principali (`v1.3.4`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
-- **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour).
+- **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour) sia alla Card che al pannello espandibile Previsioni / Radar.
 - **Animazioni Meteo (30 FPS):** scena animata leggera sullo sfondo della card (sole pulsante, stelle scintillanti e scia, nuvole in movimento, gocce oblique, neve, nebbia, lampi discreti) + icona meteo animata (disattivabile dalle Impostazioni).
 - **Riepilogo *"At a Glance"* deterministico:** analizza le prossime 12 ore per segnalare temporali, pioggia in arrivo, vento sostenuto, nebbia, UV alto o cali termici; supporta inoltre un **promemoria rapido** personalizzabile.
 - **Allerte Meteo & Raffiche (bordo Giallo / Rosso):** badge a vetro semitrasparente accanto all'orologio basato sui dati reali e sulle raffiche (`wind_gusts_10m`) di Open-Meteo (Temporale/Grandine, Pioggia gelata, Raffiche forti, Nubifragio, Neve, Rischio gelo, Nebbia, UV elevato, Caldo intenso); **invisibile quando il tempo è neutro**, cliccabile per aprire il Radar Live.
@@ -62,7 +62,7 @@ Per gestire l'avvio automatico con Windows:
 # Compilazione intera solution (App + Test)
 dotnet build Dsk.Weather.sln -c Release
 
-# Esecuzione suite test unitari deterministici (19/19 check)
+# Esecuzione suite test unitari deterministici (20/20 check)
 dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
 
 # Pubblicazione pacchetto finale in dist\

@@ -440,10 +440,12 @@ namespace Dsk.Weather.Windows
             SolidColorBrush borderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.55);
             SolidColorBrush pillBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.85);
             SolidColorBrush cardSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, _settings.BackgroundOpacity);
-            SolidColorBrush drawerSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, Math.Max(0.84, _settings.BackgroundOpacity));
+            double drawerOpacity = Math.Max(0.84, _settings.BackgroundOpacity);
+            SolidColorBrush drawerSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, drawerOpacity);
 
             bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
             bool isCompact = _settings.LayoutStyle == WidgetLayoutStyle.MaterialCompact;
+            WeatherSnapshot? atmosphereWeather = BuildAtmosphereSnapshotForTheme();
 
             LayoutPixelCard.Margin = _settings.ShowHourlyStrip
                 ? new Thickness(18, 14, 18, 0)
@@ -474,7 +476,6 @@ namespace Dsk.Weather.Windows
             }
             else
             {
-                WeatherSnapshot? atmosphereWeather = BuildAtmosphereSnapshotForTheme();
                 MainCard.Background = _settings.EnableDynamicAtmosphere
                     ? MaterialColorService.BuildAtmosphereBrush(
                         atmosphereWeather,
@@ -535,7 +536,14 @@ namespace Dsk.Weather.Windows
             CompactLocationText.Foreground = mutedBrush;
 
             // Drawer 7 giorni + Radar
-            ForecastDrawer.Background = drawerSurfaceBrush;
+            ForecastDrawer.Background = _settings.EnableDynamicAtmosphere
+                ? MaterialColorService.BuildAtmosphereBrush(
+                    atmosphereWeather,
+                    _currentPalette,
+                    _settings.ThemeMode,
+                    drawerOpacity,
+                    DateTime.Now)
+                : drawerSurfaceBrush;
             ForecastDrawer.BorderBrush = borderBrush;
             DrawerMetaText.Foreground = mutedBrush;
 
