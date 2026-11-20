@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-18%2F18%20Passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-19%2F19%20Passing-brightgreen?style=flat-square)
 
 Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Allerte Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
 
@@ -16,14 +16,14 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.3.1`)
+## Funzionalità Principali (`v1.3.2`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
 - **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour).
 - **Animazioni Meteo (30 FPS):** scena animata leggera sullo sfondo della card (sole pulsante, stelle scintillanti e scia, nuvole in movimento, gocce oblique, neve, nebbia, lampi discreti) + icona meteo animata (disattivabile dalle Impostazioni).
 - **Riepilogo *"At a Glance"* deterministico:** analizza le prossime 12 ore per segnalare temporali, pioggia in arrivo, vento sostenuto, nebbia, UV alto o cali termici; supporta inoltre un **promemoria rapido** personalizzabile.
 - **Allerte Meteo & Raffiche (bordo Giallo / Rosso):** badge a vetro semitrasparente accanto all'orologio basato sui dati reali e sulle raffiche (`wind_gusts_10m`) di Open-Meteo (Temporale/Grandine, Pioggia gelata, Raffiche forti, Nubifragio, Neve, Rischio gelo, Nebbia, UV elevato, Caldo intenso); **invisibile quando il tempo è neutro**, cliccabile per aprire il Radar Live.
-- **Striscia Oraria 24 Ore Scorrevole + Curva Termica Bézier:** scorribile orizzontalmente (rotellina del mouse, trascinamento o frecce `‹` / `›`) con **Sparkline grafica Bézier** sfumata, valori orari e gocciolina `% pioggia` (`>= 20%`).
+- **Striscia Oraria 24 Ore Scorrevole + Curva Termica Bézier (Tutti i Layout):** disponibile su tutti e 3 i layout (*Card Completa*, *Minimal Trasparente* con testo e curva ad alto contrasto ed effetto ombra su desktop trasparente, *Material Compatto* con spaziatura raccolta), scorribile orizzontalmente (rotellina del mouse, trascinamento o frecce `‹` / `›`) con **Sparkline grafica Bézier** sfumata, valori orari e gocciolina `% pioggia` (`>= 20%`).
 - **Previsioni 7 Giorni:** tabella settimanale nel pannello espandibile con formato data `Lun 23`, gocciolina + `% pioggia`, triangolino direzionale del vento + `km/h`, e `Min° / Max°`.
 - **Radar Precipitazioni Live OpenStreetMap:** scheda dedicata **Radar Live** su mappe **OpenStreetMap** senza watermark, con passaggio **automatico alba/tramonto** tra modalità **diurna chiara** e **notturna scura** (più switch manuale `◐`), 4 livelli di zoom `Z5–Z8` anche tramite rotellina del mouse, anello di portata in `km`, onda sonar sul pin città e timeline 8 fotogrammi **RainViewer** con cross-fade (`0%` CPU a pannello chiuso).
 - **Posizioni Preferite & Cambio Rapido 1-Click:** salva più località preferite nelle Impostazioni e alterna istantaneamente tra di esse con **1 click** direttamente sulla riga località della card (o dal menu tasto destro).
@@ -62,7 +62,7 @@ Per gestire l'avvio automatico con Windows:
 # Compilazione intera solution (App + Test)
 dotnet build Dsk.Weather.sln -c Release
 
-# Esecuzione suite test unitari deterministici (18/18 check)
+# Esecuzione suite test unitari deterministici (19/19 check)
 dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
 
 # Pubblicazione pacchetto finale in dist\

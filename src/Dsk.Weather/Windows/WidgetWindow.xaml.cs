@@ -443,6 +443,18 @@ namespace Dsk.Weather.Windows
             SolidColorBrush drawerSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, Math.Max(0.84, _settings.BackgroundOpacity));
 
             bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
+            bool isCompact = _settings.LayoutStyle == WidgetLayoutStyle.MaterialCompact;
+
+            LayoutPixelCard.Margin = _settings.ShowHourlyStrip
+                ? new Thickness(18, 14, 18, 0)
+                : new Thickness(18, 14, 18, 13);
+            LayoutPixelMinimal.Margin = _settings.ShowHourlyStrip
+                ? new Thickness(18, 14, 18, 0)
+                : new Thickness(18, 14, 18, 14);
+            LayoutMaterialCompact.Margin = _settings.ShowHourlyStrip
+                ? new Thickness(18, 12, 18, 0)
+                : new Thickness(18, 14, 18, 14);
+
             if (isMinimal)
             {
                 // Alpha = 1 invisibile ma garantisce hit-testing mouse su tutta la card layered
@@ -476,7 +488,7 @@ namespace Dsk.Weather.Windows
                 MainCard.Effect = (System.Windows.Media.Effects.Effect)FindResource("CardDropShadow");
             }
 
-            // Stile PixelCard
+            // Stile Card Completa
             CardDateText.Foreground = textBrush;
             CardWeatherPill.Background = pillBrush;
             CardPillTempText.Foreground = textBrush;
@@ -486,8 +498,30 @@ namespace Dsk.Weather.Windows
             CardAmPmText.Foreground = primaryBrush;
             CardInsightText.Foreground = string.IsNullOrWhiteSpace(_settings.QuickNote) ? primaryBrush : textBrush;
             CardSummaryText.Foreground = mutedBrush;
-            CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.45);
+
+            // Adatta stile e spaziatura della striscia 24h al layout attivo
             CardHourlyContainer.Visibility = _settings.ShowHourlyStrip ? Visibility.Visible : Visibility.Collapsed;
+            if (isMinimal)
+            {
+                CardHourlyContainer.Effect = (System.Windows.Media.Effects.Effect)FindResource("MinimalTextShadow");
+                CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(Color.FromArgb(0x48, 0xFF, 0xFF, 0xFF));
+                CardHourlyContainer.Margin = new Thickness(18, 10, 18, 12);
+                CardHourlyContainer.Padding = new Thickness(0, 8, 0, 0);
+            }
+            else if (isCompact)
+            {
+                CardHourlyContainer.Effect = null;
+                CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.35);
+                CardHourlyContainer.Margin = new Thickness(18, 8, 18, 10);
+                CardHourlyContainer.Padding = new Thickness(0, 6, 0, 0);
+            }
+            else
+            {
+                CardHourlyContainer.Effect = null;
+                CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.45);
+                CardHourlyContainer.Margin = new Thickness(18, 10, 18, 13);
+                CardHourlyContainer.Padding = new Thickness(0, 8, 0, 0);
+            }
 
             // Stile MaterialCompact (pulito senza riquadro opaco invasivo)
             CompactClockText.Foreground = textBrush;
@@ -520,28 +554,35 @@ namespace Dsk.Weather.Windows
             UpdateDrawerTabVisuals();
             RadarView.ApplyPalette(_currentPalette, IsRadarNightMode());
 
-            // Stile pulsante discreto hover
+            // Stile pulsanti discreti hover e scorrimento orario
             SolidColorBrush btnBg = isMinimal
                 ? MaterialThemePalette.ToBrush(Color.FromArgb(0x99, 0x0F, 0x17, 0x2A))
                 : (_settings.ThemeMode == WidgetThemeMode.MaterialLight
                     ? MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0), 0.90)
                     : MaterialThemePalette.ToBrush(Color.FromRgb(0x0F, 0x17, 0x2A), 0.55));
+            SolidColorBrush minimalBtnFg = MaterialThemePalette.ToBrush(Color.FromRgb(0xF8, 0xFA, 0xFC));
+            SolidColorBrush minimalBtnBorder = MaterialThemePalette.ToBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF));
+
             BtnSettings.Background = btnBg;
-            BtnSettings.Foreground = isMinimal ? MaterialThemePalette.ToBrush(Color.FromRgb(0xF8, 0xFA, 0xFC)) : textBrush;
-            BtnSettings.BorderBrush = isMinimal ? MaterialThemePalette.ToBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)) : borderBrush;
+            BtnSettings.Foreground = isMinimal ? minimalBtnFg : textBrush;
+            BtnSettings.BorderBrush = isMinimal ? minimalBtnBorder : borderBrush;
 
             BtnHourlyLeft.Background = btnBg;
-            BtnHourlyLeft.Foreground = textBrush;
-            BtnHourlyLeft.BorderBrush = borderBrush;
+            BtnHourlyLeft.Foreground = isMinimal ? minimalBtnFg : textBrush;
+            BtnHourlyLeft.BorderBrush = isMinimal ? minimalBtnBorder : borderBrush;
             BtnHourlyRight.Background = btnBg;
-            BtnHourlyRight.Foreground = textBrush;
-            BtnHourlyRight.BorderBrush = borderBrush;
+            BtnHourlyRight.Foreground = isMinimal ? minimalBtnFg : textBrush;
+            BtnHourlyRight.BorderBrush = isMinimal ? minimalBtnBorder : borderBrush;
 
-            HourlyScrollTrack.Background = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.70);
-            HourlyScrollThumb.Background = MaterialThemePalette.ToBrush(_currentPalette.Primary, 0.85);
+            HourlyScrollTrack.Background = isMinimal
+                ? MaterialThemePalette.ToBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF))
+                : MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.70);
+            HourlyScrollThumb.Background = isMinimal
+                ? MaterialThemePalette.ToBrush(Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF))
+                : MaterialThemePalette.ToBrush(_currentPalette.Primary, 0.85);
             UpdateHourlyScrollIndicators();
 
-            // Animazioni stile Samsung One UI (sfondo card e icone hero)
+            // Animazioni meteo (sfondo card e icone hero)
             bool animateIcons = _settings.EnableWeatherAnimations;
             CardWeatherIcon.IconKind = _previewWeatherOverride;
             MinimalWeatherIcon.IconKind = _previewWeatherOverride;
@@ -559,6 +600,7 @@ namespace Dsk.Weather.Windows
             WeatherScene.Configure(sceneKind, sceneEnabled, _settings.ThemeMode == WidgetThemeMode.MaterialLight);
             UpdateAlertBadge();
             UpdateQuickCitySwitchHints();
+            RebuildHourlyVisuals(resetScroll: false);
         }
 
         private WeatherSnapshot? BuildAtmosphereSnapshotForTheme()
@@ -739,39 +781,10 @@ namespace Dsk.Weather.Windows
             SolidColorBrush mutedText = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
             SolidColorBrush accentBrush = MaterialThemePalette.ToBrush(_currentPalette.Primary);
 
-            // Striscia oraria (prossime 24 ore scorribili + % pioggia con gocciolina + curva termica stile Samsung One UI 7)
-            var hourlyVms = new List<HourlyItemViewModel>(w.NextHours.Count);
-            foreach (HourlyForecastPoint hp in w.NextHours)
-            {
-                bool isMidnight = hp.LocalTime.Hour == 0;
-                bool showHourlyPrecip = hp.PrecipProbability >= 20;
-                string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode);
-                string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg);
-                string dateLabel = hp.LocalTime.Date > DateTime.Now.Date
-                    ? CapitalizeFirst(hp.LocalTime.ToString("ddd dd/MM", ItalianCulture)) + " · "
-                    : string.Empty;
+            // Striscia oraria (prossime 24 ore scorribili + % pioggia + curva termica, adattata al layout attivo)
+            RebuildHourlyVisuals(resetScroll: true);
 
-                hourlyVms.Add(new HourlyItemViewModel
-                {
-                    HourLabel = hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture),
-                    PrecipLabel = showHourlyPrecip ? $"{hp.PrecipProbability}%" : string.Empty,
-                    PrecipVisibility = showHourlyPrecip ? Visibility.Visible : Visibility.Hidden,
-                    TooltipText = $"{dateLabel}{hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)} · {condText} · Pioggia {hp.PrecipProbability}% · Vento {Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture)} km/h da {hrCardinal}",
-                    WeatherCode = hp.WeatherCode,
-                    IsDay = hp.IsDay,
-                    HourBrush = isMidnight ? accentBrush : mutedText,
-                    PrecipBrush = accentBrush
-                });
-            }
-            CardHourlyItems.ItemsSource = hourlyVms;
-            RenderHourlySparkline(w.NextHours, unit, _currentPalette.Primary, _currentPalette.OnSurface, _currentPalette.Surface);
-            BeginAnimation(AnimatedHourlyOffsetProperty, null);
-            _isHourlyScrollAnimating = false;
-            _hourlyScrollTarget = 0.0;
-            HourlyScrollViewer.ScrollToHorizontalOffset(0);
-            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(UpdateHourlyScrollIndicators));
-
-            // Drawer 5 giorni (formato "Lun 23", gocciolina + % pioggia sempre visibile, triangolino direzione vento + km/h, min/max senza barra)
+            // Drawer 7 giorni (formato "Lun 23", gocciolina + % pioggia sempre visibile, triangolino direzione vento + km/h, min/max)
             var dailyVms = new List<DailyItemViewModel>(w.Daily.Count);
             for (int i = 0; i < w.Daily.Count; i++)
             {
@@ -801,6 +814,66 @@ namespace Dsk.Weather.Windows
             DailyForecastItems.ItemsSource = dailyVms;
             UpdateAlertBadge();
             UpdateQuickCitySwitchHints();
+        }
+
+        private void RebuildHourlyVisuals(bool resetScroll)
+        {
+            if (_currentWeather is null)
+            {
+                CardHourlyItems.ItemsSource = null;
+                HourlySparklineCanvas.Children.Clear();
+                HourlySparklineCanvas.Width = 0;
+                return;
+            }
+
+            bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
+            SolidColorBrush hourMutedBrush = isMinimal
+                ? MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0))
+                : MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
+            SolidColorBrush hourAccentBrush = isMinimal
+                ? MaterialThemePalette.ToBrush(Color.FromRgb(0x7D, 0xD3, 0xFC))
+                : MaterialThemePalette.ToBrush(_currentPalette.Primary);
+
+            Color sparkPrimaryColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.Primary;
+            Color sparkTextColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.OnSurface;
+            Color sparkDotStrokeColor = isMinimal ? Color.FromRgb(0x0F, 0x17, 0x2A) : _currentPalette.Surface;
+
+            var hourlyVms = new List<HourlyItemViewModel>(_currentWeather.NextHours.Count);
+            foreach (HourlyForecastPoint hp in _currentWeather.NextHours)
+            {
+                bool isMidnight = hp.LocalTime.Hour == 0;
+                bool showHourlyPrecip = hp.PrecipProbability >= 20;
+                string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode);
+                string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg);
+                string dateLabel = hp.LocalTime.Date > DateTime.Now.Date
+                    ? CapitalizeFirst(hp.LocalTime.ToString("ddd dd/MM", ItalianCulture)) + " · "
+                    : string.Empty;
+
+                hourlyVms.Add(new HourlyItemViewModel
+                {
+                    HourLabel = hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+                    PrecipLabel = showHourlyPrecip ? $"{hp.PrecipProbability}%" : string.Empty,
+                    PrecipVisibility = showHourlyPrecip ? Visibility.Visible : Visibility.Hidden,
+                    TooltipText = $"{dateLabel}{hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)} · {condText} · Pioggia {hp.PrecipProbability}% · Vento {Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture)} km/h da {hrCardinal}",
+                    WeatherCode = hp.WeatherCode,
+                    IsDay = hp.IsDay,
+                    HourBrush = isMidnight ? hourAccentBrush : hourMutedBrush,
+                    PrecipBrush = hourAccentBrush
+                });
+            }
+
+            CardHourlyItems.ItemsSource = hourlyVms;
+            RenderHourlySparkline(_currentWeather.NextHours, _settings.TempUnit, sparkPrimaryColor, sparkTextColor, sparkDotStrokeColor);
+
+            if (resetScroll)
+            {
+                BeginAnimation(AnimatedHourlyOffsetProperty, null);
+                _isHourlyScrollAnimating = false;
+                _hourlyScrollTarget = 0.0;
+                HourlyScrollViewer.ScrollToHorizontalOffset(0);
+            }
+
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(UpdateHourlyScrollIndicators));
         }
 
         private void RenderHourlySparkline(

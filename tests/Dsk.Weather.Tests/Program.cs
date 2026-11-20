@@ -35,7 +35,8 @@ namespace Dsk.Weather.Tests
                 ("SettingsWindowAndContextMenuInstantiation", TestSettingsWindowAndContextMenuInstantiation),
                 ("FavoriteLocationCycleHelper", TestFavoriteLocationCycle),
                 ("WeatherAlertsEvaluationAndSeverity", TestWeatherAlertsEvaluationAndSeverity),
-                ("DefaultStyleCheckAndResetHelper", TestDefaultStyleCheckAndReset)
+                ("DefaultStyleCheckAndResetHelper", TestDefaultStyleCheckAndReset),
+                ("HourlyStripAcrossAllLayouts", TestHourlyStripAcrossAllLayouts)
             };
 
             int failures = 0;
@@ -723,6 +724,93 @@ namespace Dsk.Weather.Tests
             AssertEqual(true, cfg.IsDefaultStyle(), "Dopo ResetStyleToDefaults deve tornare in stile predefinito");
             AssertEqual("Serramanna", cfg.CityName, "ResetStyleToDefaults non deve toccare la città");
             AssertEqual(false, cfg.EnableWeatherAlerts, "ResetStyleToDefaults non deve toccare EnableWeatherAlerts");
+        }
+
+        private static void TestHourlyStripAcrossAllLayouts()
+        {
+            if (System.Windows.Application.Current is null)
+            {
+                var app = new Dsk.Weather.App();
+                app.InitializeComponent();
+            }
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "DskWeatherTests_HourlyLayouts_" + Guid.NewGuid().ToString("N"));
+            Dsk.Weather.Windows.WidgetWindow? window = null;
+            try
+            {
+                var settingsService = new SettingsService(tempDir);
+                var settings = new WidgetSettings
+                {
+                    ShowHourlyStrip = true,
+                    PinMode = WindowPinMode.BottomMost,
+                    LayoutStyle = WidgetLayoutStyle.PixelCard
+                };
+                settings.AddOrSelectLocation("Serramanna", "Italia", 39.42335, 8.92243);
+
+                window = new Dsk.Weather.Windows.WidgetWindow(
+                    settings,
+                    settingsService,
+                    new WeatherService(),
+                    new MaterialColorService(),
+                    new DesktopPinService(),
+                    new AutostartService(),
+                    () => { },
+                    () => { });
+
+                AssertTrue(
+                    !ReferenceEquals(window.CardHourlyContainer.Parent, window.LayoutPixelCard),
+                    "CardHourlyContainer non deve essere figlio esclusivo di LayoutPixelCard");
+                AssertTrue(
+                    ReferenceEquals(window.CardHourlyContainer.Parent, window.CardLayoutsHost),
+                    "CardHourlyContainer deve appartenere al contenitore condiviso CardLayoutsHost");
+
+                WidgetSettings next = settings.Clone();
+                next.LayoutStyle = WidgetLayoutStyle.PixelCard;
+                next.ShowHourlyStrip = true;
+                window.ApplySettings(next, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Visible, window.LayoutPixelCard.Visibility, "LayoutPixelCard visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.CardHourlyContainer.Visibility, "Striscia 24h visibile su Card Completa");
+                AssertTrue(window.CardHourlyContainer.Effect is null, "Nessuna ombra testo su Card Completa");
+                AssertEqual(10.0, window.CardHourlyContainer.Margin.Top, "Margine superiore striscia su Card Completa");
+
+                next = settings.Clone();
+                next.LayoutStyle = WidgetLayoutStyle.PixelMinimalTransparent;
+                next.ShowHourlyStrip = true;
+                window.ApplySettings(next, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Visible, window.LayoutPixelMinimal.Visibility, "LayoutPixelMinimal visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.CardHourlyContainer.Visibility, "Striscia 24h visibile su Minimal Trasparente");
+                AssertTrue(window.CardHourlyContainer.Effect is not null, "MinimalTextShadow applicato alla striscia 24h in Minimal Trasparente");
+
+                next = settings.Clone();
+                next.LayoutStyle = WidgetLayoutStyle.MaterialCompact;
+                next.ShowHourlyStrip = true;
+                window.ApplySettings(next, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Visible, window.LayoutMaterialCompact.Visibility, "LayoutMaterialCompact visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.CardHourlyContainer.Visibility, "Striscia 24h visibile su Material Compatto");
+                AssertTrue(window.CardHourlyContainer.Effect is null, "Nessuna ombra testo minimal su Material Compatto");
+                AssertEqual(8.0, window.CardHourlyContainer.Margin.Top, "Margine superiore raccolto striscia su Material Compatto");
+                AssertEqual(6.0, window.CardHourlyContainer.Padding.Top, "Padding superiore raccolto striscia su Material Compatto");
+
+                next = settings.Clone();
+                next.LayoutStyle = WidgetLayoutStyle.PixelMinimalTransparent;
+                next.ShowHourlyStrip = false;
+                window.ApplySettings(next, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Collapsed, window.CardHourlyContainer.Visibility, "Striscia 24h nascosta su Minimal se ShowHourlyStrip = false");
+
+                next = settings.Clone();
+                next.LayoutStyle = WidgetLayoutStyle.MaterialCompact;
+                next.ShowHourlyStrip = false;
+                window.ApplySettings(next, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Collapsed, window.CardHourlyContainer.Visibility, "Striscia 24h nascosta su Material Compatto se ShowHourlyStrip = false");
+            }
+            finally
+            {
+                window?.Close();
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

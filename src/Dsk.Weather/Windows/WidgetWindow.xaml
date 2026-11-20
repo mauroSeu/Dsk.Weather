@@ -113,7 +113,7 @@
                     MouseEnter="MainCard_MouseEnter"
                     MouseLeave="MainCard_MouseLeave">
                 <Grid x:Name="CardContentHost" SizeChanged="CardContentHost_SizeChanged">
-                    <!-- Scena meteo animata stile Samsung One UI sullo sfondo della card -->
+                    <!-- Scena meteo animata sullo sfondo della card -->
                     <controls:WeatherSceneCanvas x:Name="WeatherScene" Panel.ZIndex="0" />
 
                     <!-- Pulsante rapido discreto on-hover (solo Impostazioni) -->
@@ -131,10 +131,10 @@
                                 Click="BtnSettings_Click" />
                     </StackPanel>
 
-                    <!-- LAYOUT 1: Pixel Card (Riepilogo + Orologio + Orario) -->
-                    <Grid x:Name="LayoutPixelCard" Width="300" Margin="18,14,18,13" Panel.ZIndex="1">
+                    <StackPanel x:Name="CardLayoutsHost" Orientation="Vertical" Panel.ZIndex="1">
+                    <!-- LAYOUT 1: Card Completa (Riepilogo + Orologio) -->
+                    <Grid x:Name="LayoutPixelCard" Width="300" Margin="18,14,18,13">
                         <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -157,7 +157,7 @@
                                     Margin="10,0,0,0"
                                     Cursor="Hand"
                                     RenderTransformOrigin="0.5,0.5"
-                                    ToolTip="Clicca per aprire le previsioni a 5 giorni"
+                                    ToolTip="Clicca per aprire le previsioni a 7 giorni"
                                     MouseEnter="CardWeatherPill_MouseEnter"
                                     MouseLeave="CardWeatherPill_MouseLeave"
                                     MouseLeftButtonUp="WeatherPill_Click">
@@ -275,141 +275,9 @@
                                    MaxWidth="312"
                                    Margin="2,1,0,0"
                                    MouseLeftButtonUp="LocationSummary_Click" />
-
-                        <!-- Striscia Previsioni Orarie (24h scorrevole orizzontalmente) -->
-                        <Border Grid.Row="4"
-                                x:Name="CardHourlyContainer"
-                                BorderThickness="0,1,0,0"
-                                Margin="0,10,0,0"
-                                Padding="0,8,0,0">
-                            <Grid Width="300">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <ScrollViewer Grid.Row="0"
-                                              x:Name="HourlyScrollViewer"
-                                              Width="300"
-                                              HorizontalScrollBarVisibility="Hidden"
-                                              VerticalScrollBarVisibility="Disabled"
-                                              PanningMode="HorizontalOnly"
-                                              Background="Transparent"
-                                              PreviewMouseWheel="HourlyScrollViewer_PreviewMouseWheel"
-                                              PreviewMouseLeftButtonDown="HourlyScrollViewer_PreviewMouseLeftButtonDown"
-                                              PreviewMouseMove="HourlyScrollViewer_PreviewMouseMove"
-                                              PreviewMouseLeftButtonUp="HourlyScrollViewer_PreviewMouseLeftButtonUp"
-                                              LostMouseCapture="HourlyScrollViewer_LostMouseCapture"
-                                              ScrollChanged="HourlyScrollViewer_ScrollChanged">
-                                    <Grid Background="Transparent">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="34" />
-                                        </Grid.RowDefinitions>
-
-                                        <ItemsControl Grid.Row="0" x:Name="CardHourlyItems">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal" />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Width="60"
-                                                            Background="Transparent"
-                                                            Cursor="Hand"
-                                                            ToolTip="{Binding TooltipText}">
-                                                        <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
-                                                            <TextBlock Text="{Binding HourLabel}"
-                                                                       Foreground="{Binding HourBrush}"
-                                                                       FontFamily="Segoe UI Variable Text, Segoe UI"
-                                                                       FontSize="11"
-                                                                       Typography.NumeralAlignment="Tabular"
-                                                                       HorizontalAlignment="Center" />
-                                                            <controls:WeatherIconView Width="20"
-                                                                                      Height="20"
-                                                                                      WeatherCode="{Binding WeatherCode}"
-                                                                                      IsDay="{Binding IsDay}"
-                                                                                      Margin="0,2,0,1"
-                                                                                      HorizontalAlignment="Center" />
-                                                            <StackPanel Orientation="Horizontal"
-                                                                        Height="12"
-                                                                        HorizontalAlignment="Center"
-                                                                        VerticalAlignment="Center"
-                                                                        Visibility="{Binding PrecipVisibility}">
-                                                                <Path Data="M 4,0 C 4,0 8,4.6 8,7.2 A 4,4 0 1 1 0,7.2 C 0,4.6 4,0 4,0 Z"
-                                                                      Width="6.5"
-                                                                      Height="8.5"
-                                                                      Stretch="Fill"
-                                                                      Fill="{Binding PrecipBrush}"
-                                                                      VerticalAlignment="Center"
-                                                                      Margin="0,0,2.5,0" />
-                                                                <TextBlock Text="{Binding PrecipLabel}"
-                                                                           Foreground="{Binding PrecipBrush}"
-                                                                           FontFamily="Segoe UI Variable Text, Segoe UI"
-                                                                           FontSize="9.5"
-                                                                           FontWeight="SemiBold"
-                                                                           Typography.NumeralAlignment="Tabular"
-                                                                           VerticalAlignment="Center" />
-                                                            </StackPanel>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <Canvas Grid.Row="1"
-                                                x:Name="HourlySparklineCanvas"
-                                                Height="34"
-                                                Margin="0,1,0,0"
-                                                IsHitTestVisible="False" />
-                                    </Grid>
-                                </ScrollViewer>
-
-                                <!-- Frecce scorrimento discrete ai lati -->
-                                <Button Grid.Row="0"
-                                        x:Name="BtnHourlyLeft"
-                                        Content="&#xE76B;"
-                                        Style="{StaticResource HoverIconButtonStyle}"
-                                        Width="20"
-                                        Height="20"
-                                        FontSize="9.5"
-                                        HorizontalAlignment="Left"
-                                        VerticalAlignment="Center"
-                                        Margin="-6,0,0,0"
-                                        Panel.ZIndex="5"
-                                        Visibility="Collapsed"
-                                        ToolTip="Ore precedenti"
-                                        Click="BtnHourlyLeft_Click" />
-
-                                <Button Grid.Row="0"
-                                        x:Name="BtnHourlyRight"
-                                        Content="&#xE76C;"
-                                        Style="{StaticResource HoverIconButtonStyle}"
-                                        Width="20"
-                                        Height="20"
-                                        FontSize="9.5"
-                                        HorizontalAlignment="Right"
-                                        VerticalAlignment="Center"
-                                        Margin="0,0,-6,0"
-                                        Panel.ZIndex="5"
-                                        Visibility="Collapsed"
-                                        ToolTip="Ore successive (24h)"
-                                        Click="BtnHourlyRight_Click" />
-
-                                <!-- Indicatore scorrimento Material You -->
-                                <Grid Grid.Row="1" Height="2.5" Margin="6,5,6,0">
-                                    <Border x:Name="HourlyScrollTrack" CornerRadius="1.25" />
-                                    <Border x:Name="HourlyScrollThumb"
-                                            CornerRadius="1.25"
-                                            HorizontalAlignment="Left"
-                                            Width="58" />
-                                </Grid>
-                            </Grid>
-                        </Border>
                     </Grid>
 
-                    <!-- LAYOUT 2: Pixel Minimal Trasparente -->
+                    <!-- LAYOUT 2: Minimal Trasparente -->
                     <Grid x:Name="LayoutPixelMinimal"
                           Margin="18,14,18,14"
                           Visibility="Collapsed"
@@ -575,10 +443,145 @@
                             </StackPanel>
                         </Border>
                     </Grid>
+
+                    <!-- Striscia Previsioni Orarie condivisa tra tutti i layout (24h scorrevole orizzontalmente) -->
+                    <Border x:Name="CardHourlyContainer"
+                            Width="300"
+                            HorizontalAlignment="Left"
+                            Background="Transparent"
+                            BorderThickness="0,1,0,0"
+                            Margin="18,10,18,13"
+                            Padding="0,8,0,0">
+                        <Grid Width="300">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <ScrollViewer Grid.Row="0"
+                                          x:Name="HourlyScrollViewer"
+                                          Width="300"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Disabled"
+                                          PanningMode="HorizontalOnly"
+                                          Background="Transparent"
+                                          PreviewMouseWheel="HourlyScrollViewer_PreviewMouseWheel"
+                                          PreviewMouseLeftButtonDown="HourlyScrollViewer_PreviewMouseLeftButtonDown"
+                                          PreviewMouseMove="HourlyScrollViewer_PreviewMouseMove"
+                                          PreviewMouseLeftButtonUp="HourlyScrollViewer_PreviewMouseLeftButtonUp"
+                                          LostMouseCapture="HourlyScrollViewer_LostMouseCapture"
+                                          ScrollChanged="HourlyScrollViewer_ScrollChanged">
+                                <Grid Background="Transparent">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="34" />
+                                    </Grid.RowDefinitions>
+
+                                    <ItemsControl Grid.Row="0" x:Name="CardHourlyItems">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="60"
+                                                        Background="Transparent"
+                                                        Cursor="Hand"
+                                                        ToolTip="{Binding TooltipText}">
+                                                    <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                                                        <TextBlock Text="{Binding HourLabel}"
+                                                                   Foreground="{Binding HourBrush}"
+                                                                   FontFamily="Segoe UI Variable Text, Segoe UI"
+                                                                   FontSize="11"
+                                                                   Typography.NumeralAlignment="Tabular"
+                                                                   HorizontalAlignment="Center" />
+                                                        <controls:WeatherIconView Width="20"
+                                                                                  Height="20"
+                                                                                  WeatherCode="{Binding WeatherCode}"
+                                                                                  IsDay="{Binding IsDay}"
+                                                                                  Margin="0,2,0,1"
+                                                                                  HorizontalAlignment="Center" />
+                                                        <StackPanel Orientation="Horizontal"
+                                                                    Height="12"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    Visibility="{Binding PrecipVisibility}">
+                                                            <Path Data="M 4,0 C 4,0 8,4.6 8,7.2 A 4,4 0 1 1 0,7.2 C 0,4.6 4,0 4,0 Z"
+                                                                  Width="6.5"
+                                                                  Height="8.5"
+                                                                  Stretch="Fill"
+                                                                  Fill="{Binding PrecipBrush}"
+                                                                  VerticalAlignment="Center"
+                                                                  Margin="0,0,2.5,0" />
+                                                            <TextBlock Text="{Binding PrecipLabel}"
+                                                                       Foreground="{Binding PrecipBrush}"
+                                                                       FontFamily="Segoe UI Variable Text, Segoe UI"
+                                                                       FontSize="9.5"
+                                                                       FontWeight="SemiBold"
+                                                                       Typography.NumeralAlignment="Tabular"
+                                                                       VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <Canvas Grid.Row="1"
+                                            x:Name="HourlySparklineCanvas"
+                                            Height="34"
+                                            Margin="0,1,0,0"
+                                            IsHitTestVisible="False" />
+                                </Grid>
+                            </ScrollViewer>
+
+                            <!-- Frecce scorrimento discrete ai lati -->
+                            <Button Grid.Row="0"
+                                    x:Name="BtnHourlyLeft"
+                                    Content="&#xE76B;"
+                                    Style="{StaticResource HoverIconButtonStyle}"
+                                    Width="20"
+                                    Height="20"
+                                    FontSize="9.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Margin="-6,0,0,0"
+                                    Panel.ZIndex="5"
+                                    Visibility="Collapsed"
+                                    ToolTip="Ore precedenti"
+                                    Click="BtnHourlyLeft_Click" />
+
+                            <Button Grid.Row="0"
+                                    x:Name="BtnHourlyRight"
+                                    Content="&#xE76C;"
+                                    Style="{StaticResource HoverIconButtonStyle}"
+                                    Width="20"
+                                    Height="20"
+                                    FontSize="9.5"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,-6,0"
+                                    Panel.ZIndex="5"
+                                    Visibility="Collapsed"
+                                    ToolTip="Ore successive (24h)"
+                                    Click="BtnHourlyRight_Click" />
+
+                            <!-- Indicatore scorrimento Material You -->
+                            <Grid Grid.Row="1" Height="2.5" Margin="6,5,6,0">
+                                <Border x:Name="HourlyScrollTrack" CornerRadius="1.25" />
+                                <Border x:Name="HourlyScrollThumb"
+                                        CornerRadius="1.25"
+                                        HorizontalAlignment="Left"
+                                        Width="58" />
+                            </Grid>
+                        </Grid>
+                    </Border>
+                    </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- Drawer Espandibile Previsioni 5 Giorni & Radar Live (Dimensione Fissa 338px) -->
+            <!-- Drawer Espandibile Previsioni 7 Giorni & Radar Live (Dimensione Fissa 338px) -->
             <Border x:Name="ForecastDrawer"
                     Width="338"
                     Visibility="Collapsed"
