@@ -45,7 +45,10 @@ namespace Dsk.Weather.Tests
                 ("OfficialAlertsGeometryPolygonAndCircle", TestOfficialAlertsGeometryPolygonAndCircle),
                 ("OfficialAlertsUpdateCancelReferencesAndCertainty", TestOfficialAlertsUpdateCancelReferencesAndCertainty),
                 ("OfficialAlertsSourceStatusAndStaleDegradation", TestOfficialAlertsSourceStatusAndStaleDegradation),
-                ("FallbackPersistenceAndNowcastThresholds", TestFallbackPersistenceAndNowcastThresholds)
+                ("FallbackPersistenceAndNowcastThresholds", TestFallbackPersistenceAndNowcastThresholds),
+                ("DpcItalyOfficialAlertsByMunicipality", TestDpcItalyOfficialAlertsByMunicipality),
+                ("IpmaPortugalOfficialAlertsParsing", TestIpmaPortugalOfficialAlertsParsing),
+                ("MetNorwayOfficialAlertsParsing", TestMetNorwayOfficialAlertsParsing)
             };
 
             int failures = 0;
@@ -1604,6 +1607,191 @@ namespace Dsk.Weather.Tests
             WeatherSnapshot parsed = WeatherService.ParseForecastJson(precipJson, "Milano", baseNow);
             AssertTrue(Math.Abs(parsed.PrecipitationMm - 6.4) < 0.01, "PrecipitationMm corrente estratto");
             AssertTrue(Math.Abs(parsed.NextHours[0].PrecipitationMm - 7.8) < 0.01, "PrecipitationMm orario estratto");
+        }
+
+        private static void TestDpcItalyOfficialAlertsByMunicipality()
+        {
+            AssertEqual(false, OfficialAlertService.UsesMeteoAlarm("it"), "Italia non deve usare MeteoAlarm");
+
+            const string pageDataSnippet = """
+            {"result":{"data":{"url":"https://raw.githubusercontent.com/pcm-dpc/DPC-Bollettini-Criticita-Idrogeologica-Idraulica/master/files/all/20261120_1342_all.zip"}}}
+            """;
+            AssertEqual("20261120_1342", OfficialAlertService.ExtractDpcBulletinId(pageDataSnippet), "Estrazione ID bollettino DPC");
+
+            const string dpcTopoJson = """
+            {
+              "type": "Topology",
+              "objects": {
+                "zone_allerta": {
+                  "type": "GeometryCollection",
+                  "geometries": [
+                    {
+                      "type": "Polygon",
+                      "properties": {
+                        "Nome zona": "Campidano",
+                        "Rappresentata nella mappa": "Assenza di fenomeni significativi prevedibili / NESSUNA ALLERTA",
+                        "Per rischio idraulico": "Assenza di fenomeni significativi prevedibili / NESSUNA ALLERTA",
+                        "Per rischio temporali": "Assenza di fenomeni significativi prevedibili / NESSUNA ALLERTA",
+                        "Per rischio idrogeologico": "Assenza di fenomeni significativi prevedibili / NESSUNA ALLERTA",
+                        "Comuni": ["Cagliari", "Quartu Sant'Elena", "Serramanna"]
+                      }
+                    },
+                    {
+                      "type": "Polygon",
+                      "properties": {
+                        "Nome zona": "Montagna bolognese",
+                        "Rappresentata nella mappa": "Ordinaria per rischio idrogeologico / ALLERTA GIALLA",
+                        "Per rischio idraulico": "Assenza di fenomeni significativi prevedibili / NESSUNA ALLERTA",
+                        "Per rischio temporali": "Assenza di fenomeni significativi prevedibili / NESSUNA ALLERTA",
+                        "Per rischio idrogeologico": "Ordinaria / ALLERTA GIALLA",
+                        "Comuni": ["Castiglione dei Pepoli", "Vergato"]
+                      }
+                    },
+                    {
+                      "type": "Polygon",
+                      "properties": {
+                        "Nome zona": "Bacino Ligure",
+                        "Rappresentata nella mappa": "Moderata per temporali / ALLERTA ARANCIONE",
+                        "Per rischio idraulico": "Ordinaria / ALLERTA GIALLA",
+                        "Per rischio temporali": "Moderata / ALLERTA ARANCIONE",
+                        "Per rischio idrogeologico": "Ordinaria / ALLERTA GIALLA",
+                        "Comuni": ["Genova"]
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+            """;
+
+            var baseNow = new DateTime(2026, 11, 20, 17, 10, 0);
+
+            var serramanna = new OfficialAlertService.GeoRegionInfo(
+                "it", "IT-88", "IT-VS", "Sardegna", "Medio Campidano", string.Empty, string.Empty, "Serramanna");
+            (bool sFound, WeatherAlertInfo? sAlert) = OfficialAlertService.ParseDpcTopoJson(dpcTopoJson, serramanna, baseNow, "it");
+            AssertEqual(true, sFound, "Serramanna trovata nel bollettino DPC");
+            AssertTrue(sAlert is null, "Serramanna in zona Campidano senza allerte deve restituire null");
+
+            var quartu = new OfficialAlertService.GeoRegionInfo(
+                "it", "IT-88", "IT-CA", "Sardegna", "Cagliari", string.Empty, string.Empty, "Quartu Sant Elena");
+            (bool qFound, WeatherAlertInfo? qAlert) = OfficialAlertService.ParseDpcTopoJson(dpcTopoJson, quartu, baseNow, "it");
+            AssertEqual(true, qFound, "Quartu Sant'Elena matchata anche senza apostrofo");
+            AssertTrue(qAlert is null, "Quartu senza allerta");
+
+            var vergato = new OfficialAlertService.GeoRegionInfo(
+                "it", "IT-45", "IT-BO", "Emilia-Romagna", "Bologna", string.Empty, string.Empty, "Vergato");
+            (bool vFound, WeatherAlertInfo? vAlert) = OfficialAlertService.ParseDpcTopoJson(dpcTopoJson, vergato, baseNow, "it");
+            AssertEqual(true, vFound, "Vergato trovata");
+            AssertTrue(vAlert is not null && vAlert.IsOfficial, "Vergato allerta ufficiale attiva");
+            AssertEqual(WeatherAlertLevel.Yellow, vAlert!.Level, "Vergato Allerta Gialla");
+            AssertEqual("IDROGEOLOGICO", vAlert.Title, "Titolo DPC idrogeologico IT");
+            AssertEqual("Protezione Civile Nazionale", vAlert.SourceName, "Fonte DPC");
+
+            (_, WeatherAlertInfo? vEn) = OfficialAlertService.ParseDpcTopoJson(dpcTopoJson, vergato, baseNow, "en");
+            AssertTrue(vEn is not null && vEn.Title == "HYDROGEOLOGICAL", "Titolo DPC idrogeologico EN");
+
+            var genova = new OfficialAlertService.GeoRegionInfo(
+                "it", "IT-42", "IT-GE", "Liguria", "Genova", string.Empty, string.Empty, "Genova");
+            (bool gFound, WeatherAlertInfo? gAlert) = OfficialAlertService.ParseDpcTopoJson(dpcTopoJson, genova, baseNow, "it");
+            AssertEqual(true, gFound, "Genova trovata");
+            AssertTrue(gAlert is not null && gAlert.Level == WeatherAlertLevel.Orange, "Genova Allerta Arancione temporali");
+            AssertEqual("TEMPORALE", gAlert!.Title, "Titolo DPC temporali");
+        }
+
+        private static void TestIpmaPortugalOfficialAlertsParsing()
+        {
+            AssertEqual(false, OfficialAlertService.UsesMeteoAlarm("pt"), "Portogallo usa IPMA e non MeteoAlarm");
+
+            var baseNow = new DateTime(2026, 11, 20, 17, 10, 0);
+            string startActive = baseNow.AddHours(-1).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+            string endFuture = baseNow.AddHours(6).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+
+            string ipmaJson = $$"""
+            [
+              {
+                "text": "Tempo sem avisos.",
+                "awarenessTypeName": "Precipitação",
+                "idAreaAviso": "VIS",
+                "startTime": "{{startActive}}",
+                "awarenessLevelID": "green",
+                "endTime": "{{endFuture}}"
+              },
+              {
+                "text": "Chuva persistente, por vezes forte.",
+                "awarenessTypeName": "Precipitação",
+                "idAreaAviso": "VIS",
+                "startTime": "{{startActive}}",
+                "awarenessLevelID": "orange",
+                "endTime": "{{endFuture}}"
+              },
+              {
+                "text": "Vento forte no litoral.",
+                "awarenessTypeName": "Vento",
+                "idAreaAviso": "LSB",
+                "startTime": "{{startActive}}",
+                "awarenessLevelID": "yellow",
+                "endTime": "{{endFuture}}"
+              }
+            ]
+            """;
+
+            var viseu = new OfficialAlertService.GeoRegionInfo(
+                "pt", "PT-18", string.Empty, "Viseu", "Viseu", string.Empty, string.Empty, "Viseu");
+            WeatherAlertInfo? visIt = OfficialAlertService.ParseIpmaJson(ipmaJson, viseu, baseNow, "it");
+            AssertTrue(visIt is not null && visIt.IsOfficial, "IPMA Viseu allerta ufficiale");
+            AssertEqual(WeatherAlertLevel.Orange, visIt!.Level, "IPMA Viseu livello orange");
+            AssertEqual("PIOGGIA", visIt.Title, "IPMA titolo pioggia IT");
+            AssertEqual("IPMA", visIt.SourceName, "Fonte IPMA");
+
+            WeatherAlertInfo? visPt = OfficialAlertService.ParseIpmaJson(ipmaJson, viseu, baseNow, "pt");
+            AssertTrue(visPt is not null && visPt.Title == "PRECIPITAÇÃO", "IPMA titolo pioggia PT");
+
+            var faro = new OfficialAlertService.GeoRegionInfo(
+                "pt", "PT-08", string.Empty, "Faro", "Faro", string.Empty, string.Empty, "Faro");
+            AssertTrue(OfficialAlertService.ParseIpmaJson(ipmaJson, faro, baseNow, "pt") is null, "Faro senza avvisi in array -> null");
+        }
+
+        private static void TestMetNorwayOfficialAlertsParsing()
+        {
+            AssertEqual(false, OfficialAlertService.UsesMeteoAlarm("no"), "Norvegia usa MET Norway e non MeteoAlarm");
+
+            var baseNow = new DateTime(2026, 11, 20, 17, 10, 0);
+            DateTimeOffset refLocal = new DateTimeOffset(baseNow, TimeZoneInfo.Local.GetUtcOffset(baseNow));
+            string onset = refLocal.AddHours(-1).ToString("O", CultureInfo.InvariantCulture);
+            string expires = refLocal.AddHours(5).ToString("O", CultureInfo.InvariantCulture);
+
+            const string emptyNoJson = """{"features":[],"lang":"no","lastChange":"2026-11-20T16:12:38+00:00","type":"FeatureCollection"}""";
+            AssertTrue(OfficialAlertService.ParseMetNorwayJson(emptyNoJson, baseNow, "it") is null, "MET Norway features vuoto -> null");
+
+            string activeNoJson = $$"""
+            {
+              "type": "FeatureCollection",
+              "features": [
+                {
+                  "type": "Feature",
+                  "when": {
+                    "interval": ["{{onset}}", "{{expires}}"]
+                  },
+                  "properties": {
+                    "status": "Actual",
+                    "severity": "Severe",
+                    "awareness_level": "3; orange; Severe",
+                    "certainty": "Observed",
+                    "event": "gale",
+                    "eventAwarenessName": "Stiv kuling",
+                    "description": "Strong wind gusts along coastal Oslo fjord."
+                  }
+                }
+              ]
+            }
+            """;
+
+            WeatherAlertInfo? noAlert = OfficialAlertService.ParseMetNorwayJson(activeNoJson, baseNow, "it");
+            AssertTrue(noAlert is not null && noAlert.IsOfficial, "MET Norway allerta ufficiale");
+            AssertEqual(WeatherAlertLevel.Orange, noAlert!.Level, "MET Norway Severe -> Orange");
+            AssertEqual("ALLERTA VENTO", noAlert.Title, "MET Norway titolo vento IT");
+            AssertEqual("MET Norway", noAlert.SourceName, "Fonte MET Norway");
+            AssertEqual("Observed", noAlert.Certainty, "Certainty Observed preservata");
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

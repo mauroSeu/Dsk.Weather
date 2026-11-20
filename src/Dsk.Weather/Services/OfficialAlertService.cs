@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -31,51 +32,65 @@ namespace Dsk.Weather.Services
 
     public sealed class OfficialAlertService
     {
+        private const string DpcPageDataUrl = "https://mappe.protezionecivile.gov.it/page-data/it/mappe-rischi/bollettino-di-criticita/page-data.json";
+        private const string DpcGithubCommitsUrl = "https://api.github.com/repos/pcm-dpc/DPC-Bollettini-Criticita-Idrogeologica-Idraulica/commits?path=files/topojson&per_page=1";
+        private const string DpcTopoJsonTemplate = "https://raw.githubusercontent.com/pcm-dpc/DPC-Bollettini-Criticita-Idrogeologica-Idraulica/master/files/topojson/{0}_today.json";
+        private const string IpmaWarningsUrl = "https://api.ipma.pt/open-data/forecast/warnings/warnings_www.json";
+
         private static readonly HttpClient SharedHttpClient = CreateHttpClient();
         private static readonly TimeSpan FeedCacheTtl = TimeSpan.FromMinutes(15);
         private static readonly TimeSpan StaleGraceTtl = TimeSpan.FromMinutes(60);
+        private static readonly TimeSpan DpcIndexTtl = TimeSpan.FromMinutes(30);
+        private static readonly TimeSpan DpcBulletinTtl = TimeSpan.FromMinutes(60);
+        private static readonly TimeSpan DpcStaleGraceTtl = TimeSpan.FromMinutes(240);
         private static readonly object CacheLock = new();
 
         private static readonly Dictionary<string, GeoRegionInfo> GeoCache = new(StringComparer.Ordinal);
         private static readonly Dictionary<string, CachedPayload> PayloadCache = new(StringComparer.Ordinal);
 
+        // MeteoAlarm mantenuto solo nei Paesi europei con buona granularità provinciale o poligonale
         private static readonly Dictionary<string, string> CountryToMeteoAlarmSlug = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["it"] = "italy",
             ["nl"] = "netherlands",
-            ["es"] = "spain",
-            ["pt"] = "portugal",
             ["fr"] = "france",
-            ["at"] = "austria",
-            ["ch"] = "switzerland",
+            ["es"] = "spain",
             ["be"] = "belgium",
+            ["ch"] = "switzerland",
+            ["at"] = "austria",
+            ["lu"] = "luxembourg",
             ["gb"] = "united-kingdom",
             ["ie"] = "ireland",
-            ["pl"] = "poland",
-            ["gr"] = "greece",
-            ["hr"] = "croatia",
-            ["si"] = "slovenia",
-            ["cz"] = "czechia",
-            ["sk"] = "slovakia",
-            ["hu"] = "hungary",
-            ["ro"] = "romania",
-            ["bg"] = "bulgaria",
-            ["no"] = "norway",
-            ["se"] = "sweden",
             ["dk"] = "denmark",
+            ["se"] = "sweden",
             ["fi"] = "finland",
-            ["lu"] = "luxembourg",
-            ["mt"] = "malta",
-            ["cy"] = "cyprus",
-            ["ee"] = "estonia",
-            ["lv"] = "latvia",
-            ["lt"] = "lithuania",
-            ["rs"] = "serbia",
-            ["ba"] = "bosnia-herzegovina",
-            ["me"] = "montenegro",
-            ["mk"] = "republic-of-north-macedonia",
-            ["md"] = "moldova",
-            ["is"] = "iceland"
+            ["pl"] = "poland",
+            ["cz"] = "czechia"
+        };
+
+        private static readonly Dictionary<string, string[]> PortugueseDistrictToIpmaArea = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["aveiro"] = new[] { "AVR" },
+            ["beja"] = new[] { "BJA" },
+            ["braga"] = new[] { "BRG" },
+            ["braganca"] = new[] { "BGC" },
+            ["castelo branco"] = new[] { "CBL" },
+            ["coimbra"] = new[] { "CBR" },
+            ["evora"] = new[] { "EVR" },
+            ["faro"] = new[] { "FAR" },
+            ["guarda"] = new[] { "GDA" },
+            ["leiria"] = new[] { "LRA" },
+            ["lisboa"] = new[] { "LSB" },
+            ["lisbon"] = new[] { "LSB" },
+            ["portalegre"] = new[] { "PTG" },
+            ["porto"] = new[] { "PTO" },
+            ["santarem"] = new[] { "STM" },
+            ["setubal"] = new[] { "STB" },
+            ["viana do castelo"] = new[] { "VCT" },
+            ["vila real"] = new[] { "VRL" },
+            ["viseu"] = new[] { "VIS" },
+            ["madeira"] = new[] { "MCN", "MCS", "MRM" },
+            ["acores"] = new[] { "AOR", "ACE", "AOC" },
+            ["azores"] = new[] { "AOR", "ACE", "AOC" }
         };
 
         private static readonly Dictionary<string, string> ItalianIsoToEmma = new(StringComparer.OrdinalIgnoreCase)
@@ -120,12 +135,22 @@ namespace Dsk.Weather.Services
 
         private static HttpClient CreateHttpClient()
         {
-            var client = new HttpClient
+            var handler = new HttpClientHandler
             {
-                Timeout = TimeSpan.FromSeconds(8)
+                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
             };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("Dsk.Weather/1.4.1 (https://github.com/mauroSeu/Dsk.Weather)");
+            var client = new HttpClient(handler)
+            {
+                Timeout = TimeSpan.FromSeconds(10)
+            };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("Dsk.Weather/1.4.2 (https://github.com/mauroSeu/Dsk.Weather)");
             return client;
+        }
+
+        internal static bool UsesMeteoAlarm(string countryCode)
+        {
+            return !string.IsNullOrWhiteSpace(countryCode) &&
+                CountryToMeteoAlarmSlug.ContainsKey(countryCode.Trim());
         }
 
         internal static void ClearCachesForTests()
@@ -154,6 +179,11 @@ namespace Dsk.Weather.Services
                 string cc = region.CountryCode.ToLowerInvariant();
                 DateTime localNow = DateTime.Now;
                 DateTimeOffset nowUtc = DateTimeOffset.UtcNow;
+
+                if (cc == "it")
+                {
+                    return await FetchDpcItalyAlertAsync(region, localNow, nowUtc, lang, ct).ConfigureAwait(false);
+                }
 
                 if (cc == "de")
                 {
@@ -189,6 +219,36 @@ namespace Dsk.Weather.Services
 
                     WeatherAlertInfo? nwsAlert = ParseNwsJson(outcome.Body, localNow, lang);
                     return new OfficialAlertFetchResult(true, nwsAlert, outcome.Status, outcome.LastSuccessfulFetchUtc, "NOAA NWS");
+                }
+
+                if (cc == "pt")
+                {
+                    PayloadFetchOutcome outcome = await FetchPayloadWithCacheAsync("pt:ipma", IpmaWarningsUrl, nowUtc, DownloadStringAsync, ct).ConfigureAwait(false);
+                    if (outcome.Body is null)
+                    {
+                        return new OfficialAlertFetchResult(false, null, AlertSourceStatus.Fallback, outcome.LastSuccessfulFetchUtc, "IPMA");
+                    }
+
+                    WeatherAlertInfo? ipmaAlert = ParseIpmaJson(outcome.Body, region, localNow, lang);
+                    return new OfficialAlertFetchResult(true, ipmaAlert, outcome.Status, outcome.LastSuccessfulFetchUtc, "IPMA");
+                }
+
+                if (cc == "no")
+                {
+                    string key = string.Format(CultureInfo.InvariantCulture, "no:{0:0.##},{1:0.##}", lat, lon);
+                    string url = string.Format(
+                        CultureInfo.InvariantCulture,
+                        "https://api.met.no/weatherapi/metalerts/2.0/current.json?lat={0:0.####}&lon={1:0.####}",
+                        lat,
+                        lon);
+                    PayloadFetchOutcome outcome = await FetchPayloadWithCacheAsync(key, url, nowUtc, DownloadStringAsync, ct).ConfigureAwait(false);
+                    if (outcome.Body is null)
+                    {
+                        return new OfficialAlertFetchResult(false, null, AlertSourceStatus.Fallback, outcome.LastSuccessfulFetchUtc, "MET Norway");
+                    }
+
+                    WeatherAlertInfo? noAlert = ParseMetNorwayJson(outcome.Body, localNow, lang);
+                    return new OfficialAlertFetchResult(true, noAlert, outcome.Status, outcome.LastSuccessfulFetchUtc, "MET Norway");
                 }
 
                 if (CountryToMeteoAlarmSlug.TryGetValue(cc, out string? slug))
@@ -252,6 +312,112 @@ namespace Dsk.Weather.Services
             }
         }
 
+        private static async Task<OfficialAlertFetchResult> FetchDpcItalyAlertAsync(
+            GeoRegionInfo region,
+            DateTime localNow,
+            DateTimeOffset nowUtc,
+            string lang,
+            CancellationToken ct)
+        {
+            PayloadFetchOutcome indexOutcome = await FetchPayloadWithCacheAsync(
+                "dpc:index",
+                DpcPageDataUrl,
+                nowUtc,
+                DownloadStringAsync,
+                ct,
+                DpcIndexTtl,
+                DpcStaleGraceTtl).ConfigureAwait(false);
+
+            string? bulletinId = indexOutcome.Body is not null
+                ? ExtractDpcBulletinId(indexOutcome.Body)
+                : null;
+            AlertSourceStatus effectiveStatus = indexOutcome.Status;
+            DateTimeOffset? lastSuccess = indexOutcome.LastSuccessfulFetchUtc;
+
+            if (string.IsNullOrWhiteSpace(bulletinId))
+            {
+                PayloadFetchOutcome ghCommits = await FetchPayloadWithCacheAsync(
+                    "dpc:ghcommits",
+                    DpcGithubCommitsUrl,
+                    nowUtc,
+                    DownloadStringAsync,
+                    ct,
+                    DpcIndexTtl,
+                    DpcStaleGraceTtl).ConfigureAwait(false);
+
+                if (ghCommits.Body is not null)
+                {
+                    bulletinId = ExtractDpcBulletinId(ghCommits.Body);
+                    if (string.IsNullOrWhiteSpace(bulletinId))
+                    {
+                        string? commitSha = ExtractFirstGithubCommitSha(ghCommits.Body);
+                        if (!string.IsNullOrWhiteSpace(commitSha))
+                        {
+                            string commitUrl = $"https://api.github.com/repos/pcm-dpc/DPC-Bollettini-Criticita-Idrogeologica-Idraulica/commits/{commitSha}";
+                            PayloadFetchOutcome commitDetail = await FetchPayloadWithCacheAsync(
+                                $"dpc:ghcommit:{commitSha}",
+                                commitUrl,
+                                nowUtc,
+                                DownloadStringAsync,
+                                ct,
+                                DpcBulletinTtl,
+                                DpcStaleGraceTtl).ConfigureAwait(false);
+                            if (commitDetail.Body is not null)
+                            {
+                                bulletinId = ExtractDpcBulletinId(commitDetail.Body);
+                                effectiveStatus = commitDetail.Status;
+                                lastSuccess = commitDetail.LastSuccessfulFetchUtc;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        effectiveStatus = ghCommits.Status;
+                        lastSuccess = ghCommits.LastSuccessfulFetchUtc;
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(bulletinId))
+            {
+                return new OfficialAlertFetchResult(false, null, AlertSourceStatus.Fallback, lastSuccess, "Protezione Civile");
+            }
+
+            string topoUrl = string.Format(CultureInfo.InvariantCulture, DpcTopoJsonTemplate, bulletinId);
+            PayloadFetchOutcome topoOutcome = await FetchPayloadWithCacheAsync(
+                $"dpc:today:{bulletinId}",
+                topoUrl,
+                nowUtc,
+                DownloadStringAsync,
+                ct,
+                DpcBulletinTtl,
+                DpcStaleGraceTtl).ConfigureAwait(false);
+
+            if (topoOutcome.Body is null)
+            {
+                return new OfficialAlertFetchResult(false, null, AlertSourceStatus.Fallback, topoOutcome.LastSuccessfulFetchUtc ?? lastSuccess, "Protezione Civile");
+            }
+
+            if (topoOutcome.Status == AlertSourceStatus.StaleCache || effectiveStatus == AlertSourceStatus.StaleCache)
+            {
+                effectiveStatus = AlertSourceStatus.StaleCache;
+            }
+            else
+            {
+                effectiveStatus = topoOutcome.Status;
+            }
+
+            lastSuccess = topoOutcome.LastSuccessfulFetchUtc ?? lastSuccess;
+
+            (bool zoneFound, WeatherAlertInfo? alert) = ParseDpcTopoJson(topoOutcome.Body, region, localNow, lang);
+            if (!zoneFound)
+            {
+                return new OfficialAlertFetchResult(false, null, AlertSourceStatus.Fallback, lastSuccess, "Protezione Civile");
+            }
+
+            return new OfficialAlertFetchResult(true, alert, effectiveStatus, lastSuccess, "Protezione Civile");
+        }
+
         private static async Task<GeoRegionInfo?> ResolveRegionAsync(double lat, double lon, CancellationToken ct)
         {
             string coordKey = string.Format(CultureInfo.InvariantCulture, "{0:0.##},{1:0.##}", lat, lon);
@@ -293,7 +459,8 @@ namespace Dsk.Weather.Services
                 City: GetFirstNonEmpty(
                     GetJsonString(addr, "city"),
                     GetJsonString(addr, "town"),
-                    GetJsonString(addr, "village")));
+                    GetJsonString(addr, "village"),
+                    GetJsonString(addr, "hamlet")));
 
             lock (CacheLock)
             {
@@ -319,13 +486,18 @@ namespace Dsk.Weather.Services
             string url,
             DateTimeOffset nowUtc,
             Func<string, CancellationToken, Task<string?>> fetcher,
-            CancellationToken ct)
+            CancellationToken ct,
+            TimeSpan? cacheTtl = null,
+            TimeSpan? staleGraceTtl = null)
         {
+            TimeSpan effectiveTtl = cacheTtl ?? FeedCacheTtl;
+            TimeSpan effectiveGrace = staleGraceTtl ?? StaleGraceTtl;
+
             CachedPayload? cachedEntry;
             lock (CacheLock)
             {
                 if (PayloadCache.TryGetValue(cacheKey, out cachedEntry) &&
-                    (nowUtc - cachedEntry.FetchedUtc) < FeedCacheTtl)
+                    (nowUtc - cachedEntry.FetchedUtc) < effectiveTtl)
                 {
                     return new PayloadFetchOutcome(cachedEntry.Body, AlertSourceStatus.Live, cachedEntry.FetchedUtc);
                 }
@@ -360,7 +532,7 @@ namespace Dsk.Weather.Services
                 PayloadCache.TryGetValue(cacheKey, out cachedEntry);
             }
 
-            if (cachedEntry is not null && (nowUtc - cachedEntry.FetchedUtc) <= StaleGraceTtl)
+            if (cachedEntry is not null && (nowUtc - cachedEntry.FetchedUtc) <= effectiveGrace)
             {
                 return new PayloadFetchOutcome(cachedEntry.Body, AlertSourceStatus.StaleCache, cachedEntry.FetchedUtc);
             }
@@ -1086,6 +1258,699 @@ namespace Dsk.Weather.Services
                 Certainty: certainty);
         }
 
+        internal static string? ExtractDpcBulletinId(string payload)
+        {
+            if (string.IsNullOrWhiteSpace(payload))
+            {
+                return null;
+            }
+
+            string? best = null;
+            void considerMatches(MatchCollection matches)
+            {
+                foreach (Match m in matches)
+                {
+                    if (m.Success && m.Groups.Count > 1)
+                    {
+                        string id = m.Groups[1].Value;
+                        if (best is null || string.CompareOrdinal(id, best) > 0)
+                        {
+                            best = id;
+                        }
+                    }
+                }
+            }
+
+            considerMatches(Regex.Matches(
+                payload,
+                @"files/(?:all|pdf|shp|xml|topojson|geojson)/(\d{8}_\d{4})",
+                RegexOptions.IgnoreCase));
+
+            if (best is null)
+            {
+                considerMatches(Regex.Matches(
+                    payload,
+                    @"\b(20\d{6}_\d{4})_(?:today|tomorrow|all|shp)\b",
+                    RegexOptions.IgnoreCase));
+            }
+
+            return best;
+        }
+
+        private static string? ExtractFirstGithubCommitSha(string json)
+        {
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(json);
+                if (doc.RootElement.ValueKind == JsonValueKind.Array && doc.RootElement.GetArrayLength() > 0)
+                {
+                    return GetJsonString(doc.RootElement[0], "sha");
+                }
+            }
+            catch
+            {
+                // Ignore malformed commit response
+            }
+
+            return null;
+        }
+
+        internal static (bool ZoneFound, WeatherAlertInfo? Alert) ParseDpcTopoJson(
+            string json,
+            GeoRegionInfo region,
+            DateTime localNow,
+            string lang = "it")
+        {
+            if (string.IsNullOrWhiteSpace(json) || region is null)
+            {
+                return (false, null);
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("objects", out JsonElement objectsEl) ||
+                objectsEl.ValueKind != JsonValueKind.Object)
+            {
+                return (false, null);
+            }
+
+            JsonElement? geometriesEl = null;
+            foreach (JsonProperty prop in objectsEl.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == JsonValueKind.Object &&
+                    prop.Value.TryGetProperty("geometries", out JsonElement g) &&
+                    g.ValueKind == JsonValueKind.Array)
+                {
+                    geometriesEl = g;
+                    break;
+                }
+            }
+
+            if (!geometriesEl.HasValue)
+            {
+                return (false, null);
+            }
+
+            var cityNorms = new HashSet<string>(StringComparer.Ordinal);
+            var cityCompacts = new HashSet<string>(StringComparer.Ordinal);
+            void addCityToken(string? raw)
+            {
+                string n = NormalizeAreaToken(raw ?? string.Empty);
+                if (n.Length >= 2)
+                {
+                    cityNorms.Add(n);
+                    cityCompacts.Add(n.Replace(" ", string.Empty, StringComparison.Ordinal));
+                }
+            }
+            addCityToken(region.City);
+            addCityToken(region.Municipality);
+
+            var countyNorms = new HashSet<string>(StringComparer.Ordinal);
+            var countyCompacts = new HashSet<string>(StringComparer.Ordinal);
+            if (!string.IsNullOrWhiteSpace(region.County))
+            {
+                foreach (string part in region.County.Split(new[] { '/', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string n = NormalizeAreaToken(part);
+                    if (n.Length >= 3)
+                    {
+                        countyNorms.Add(n);
+                        countyCompacts.Add(n.Replace(" ", string.Empty, StringComparison.Ordinal));
+                    }
+                }
+            }
+
+            bool matchesSet(string raw, HashSet<string> norms, HashSet<string> compacts)
+            {
+                string n = NormalizeAreaToken(raw);
+                if (n.Length < 2) return false;
+                return norms.Contains(n) || compacts.Contains(n.Replace(" ", string.Empty, StringComparison.Ordinal));
+            }
+
+            List<JsonElement> matchedProps = new();
+            foreach (JsonElement geom in geometriesEl.Value.EnumerateArray())
+            {
+                if (!geom.TryGetProperty("properties", out JsonElement props) ||
+                    props.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                if (cityNorms.Count > 0 &&
+                    props.TryGetProperty("Comuni", out JsonElement comuniEl) &&
+                    comuniEl.ValueKind == JsonValueKind.Array)
+                {
+                    bool cityHit = false;
+                    foreach (JsonElement cEl in comuniEl.EnumerateArray())
+                    {
+                        if (cEl.ValueKind == JsonValueKind.String &&
+                            matchesSet(cEl.GetString() ?? string.Empty, cityNorms, cityCompacts))
+                        {
+                            cityHit = true;
+                            break;
+                        }
+                    }
+
+                    if (cityHit)
+                    {
+                        matchedProps.Add(props);
+                    }
+                }
+            }
+
+            if (matchedProps.Count == 0 && countyNorms.Count > 0)
+            {
+                foreach (JsonElement geom in geometriesEl.Value.EnumerateArray())
+                {
+                    if (!geom.TryGetProperty("properties", out JsonElement props) ||
+                        props.ValueKind != JsonValueKind.Object)
+                    {
+                        continue;
+                    }
+
+                    bool hit = false;
+                    string zona = GetJsonString(props, "Nome zona");
+                    if (!string.IsNullOrWhiteSpace(zona) && matchesSet(zona, countyNorms, countyCompacts))
+                    {
+                        hit = true;
+                    }
+                    else if (props.TryGetProperty("Comuni", out JsonElement comuniEl) &&
+                             comuniEl.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (JsonElement cEl in comuniEl.EnumerateArray())
+                        {
+                            if (cEl.ValueKind == JsonValueKind.String &&
+                                matchesSet(cEl.GetString() ?? string.Empty, countyNorms, countyCompacts))
+                            {
+                                hit = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (hit)
+                    {
+                        matchedProps.Add(props);
+                    }
+                }
+            }
+
+            if (matchedProps.Count == 0)
+            {
+                return (false, null);
+            }
+
+            WeatherAlertLevel bestLevel = WeatherAlertLevel.None;
+            JsonElement? chosenProps = null;
+            WeatherAlertLevel chosenHydr = WeatherAlertLevel.None;
+            WeatherAlertLevel chosenStorm = WeatherAlertLevel.None;
+            WeatherAlertLevel chosenHydroGeo = WeatherAlertLevel.None;
+            string chosenMapRaw = string.Empty;
+
+            foreach (JsonElement p in matchedProps)
+            {
+                string mapRaw = GetJsonString(p, "Rappresentata nella mappa");
+                WeatherAlertLevel mapLvl = ParseDpcAlertLevel(mapRaw);
+                WeatherAlertLevel hydrLvl = ParseDpcAlertLevel(GetJsonString(p, "Per rischio idraulico"));
+                WeatherAlertLevel stormLvl = ParseDpcAlertLevel(GetJsonString(p, "Per rischio temporali"));
+                WeatherAlertLevel hydroLvl = ParseDpcAlertLevel(GetJsonString(p, "Per rischio idrogeologico"));
+
+                WeatherAlertLevel maxLvl = mapLvl;
+                if (LevelRank(hydrLvl) > LevelRank(maxLvl)) maxLvl = hydrLvl;
+                if (LevelRank(stormLvl) > LevelRank(maxLvl)) maxLvl = stormLvl;
+                if (LevelRank(hydroLvl) > LevelRank(maxLvl)) maxLvl = hydroLvl;
+
+                if (!chosenProps.HasValue || LevelRank(maxLvl) > LevelRank(bestLevel))
+                {
+                    bestLevel = maxLvl;
+                    chosenProps = p;
+                    chosenHydr = hydrLvl;
+                    chosenStorm = stormLvl;
+                    chosenHydroGeo = hydroLvl;
+                    chosenMapRaw = mapRaw;
+                }
+            }
+
+            if (bestLevel == WeatherAlertLevel.None || !chosenProps.HasValue)
+            {
+                return (true, null);
+            }
+
+            string normalizedLang = LocalizationService.NormalizeLanguage(lang);
+            string zonaName = GetJsonString(chosenProps.Value, "Nome zona");
+
+            string title;
+            if (chosenStorm == bestLevel)
+            {
+                title = LocalizationService.T(normalizedLang, "alert_cap_storm");
+            }
+            else if (chosenHydr == bestLevel)
+            {
+                title = LocalizationService.T(normalizedLang, "alert_cap_flood");
+            }
+            else if (chosenHydroGeo == bestLevel)
+            {
+                title = LocalizationService.T(normalizedLang, "alert_cap_hydro");
+            }
+            else
+            {
+                title = ResolveCapAlertTitle(string.Empty, chosenMapRaw, normalizedLang);
+            }
+
+            var riskNames = new List<string>(3);
+            if (chosenStorm != WeatherAlertLevel.None) riskNames.Add(LocalizationService.T(normalizedLang, "alert_cap_storm"));
+            if (chosenHydr != WeatherAlertLevel.None) riskNames.Add(LocalizationService.T(normalizedLang, "alert_cap_flood"));
+            if (chosenHydroGeo != WeatherAlertLevel.None) riskNames.Add(LocalizationService.T(normalizedLang, "alert_cap_hydro"));
+
+            string risksSummary = riskNames.Count > 0
+                ? string.Join(" · ", riskNames)
+                : chosenMapRaw;
+            string desc = string.IsNullOrWhiteSpace(zonaName)
+                ? risksSummary
+                : $"{zonaName}: {risksSummary}";
+
+            DateTime endOfDay = localNow.Date.AddDays(1).AddMinutes(-1);
+            DateTimeOffset expires = ToLocalDateTimeOffset(endOfDay);
+            string detail = FormatAlertDetail(null, expires, localNow, normalizedLang);
+            const string source = "Protezione Civile Nazionale";
+            string levelLabel = GetLevelLabel(bestLevel, normalizedLang);
+            string timeRange = FormatTimeRange(null, expires);
+
+            var sb = new StringBuilder();
+            sb.Append(levelLabel).Append(" · ").Append(title);
+            if (!string.IsNullOrWhiteSpace(zonaName))
+            {
+                sb.Append(" (").Append(zonaName).Append(')');
+            }
+            if (!string.IsNullOrWhiteSpace(timeRange))
+            {
+                sb.Append('\n').Append(timeRange);
+            }
+            if (!string.IsNullOrWhiteSpace(risksSummary))
+            {
+                sb.Append('\n').Append(risksSummary);
+            }
+            sb.Append('\n').Append(LocalizationService.Format(normalizedLang, "alert_source_official", source));
+
+            var alert = new WeatherAlertInfo(
+                bestLevel,
+                title,
+                detail,
+                sb.ToString(),
+                IsOfficial: true,
+                SourceName: source,
+                Description: desc,
+                Certainty: "Likely");
+
+            return (true, alert);
+        }
+
+        private static WeatherAlertLevel ParseDpcAlertLevel(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return WeatherAlertLevel.None;
+            }
+
+            string upper = raw.Trim().ToUpperInvariant();
+            if (upper.Contains("NESSUNA ALLERTA", StringComparison.Ordinal) ||
+                upper.Contains("ASSENZA DI FENOMENI", StringComparison.Ordinal))
+            {
+                return WeatherAlertLevel.None;
+            }
+
+            if (upper.Contains("ROSSA", StringComparison.Ordinal) ||
+                upper.Contains("ELEVATA", StringComparison.Ordinal))
+            {
+                return WeatherAlertLevel.Red;
+            }
+
+            if (upper.Contains("ARANCIONE", StringComparison.Ordinal) ||
+                upper.Contains("MODERATA", StringComparison.Ordinal))
+            {
+                return WeatherAlertLevel.Orange;
+            }
+
+            if (upper.Contains("GIALLA", StringComparison.Ordinal) ||
+                upper.Contains("ORDINARIA", StringComparison.Ordinal))
+            {
+                return WeatherAlertLevel.Yellow;
+            }
+
+            return WeatherAlertLevel.None;
+        }
+
+        internal static WeatherAlertInfo? ParseIpmaJson(
+            string json,
+            GeoRegionInfo region,
+            DateTime localNow,
+            string lang = "it")
+        {
+            if (string.IsNullOrWhiteSpace(json) || region is null)
+            {
+                return null;
+            }
+
+            HashSet<string> targetAreas = ResolveIpmaAreaIds(region);
+            if (targetAreas.Count == 0)
+            {
+                return null;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array ||
+                doc.RootElement.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            string normalizedLang = LocalizationService.NormalizeLanguage(lang);
+            DateTimeOffset nowUtc = ToLocalDateTimeOffset(localNow).ToUniversalTime();
+            DateTimeOffset maxLookaheadUtc = nowUtc.AddHours(18);
+
+            WeatherAlertLevel bestLevel = WeatherAlertLevel.None;
+            int bestRank = -1;
+            bool bestActive = false;
+            DateTimeOffset bestOnset = DateTimeOffset.MaxValue;
+            JsonElement? bestEl = null;
+
+            foreach (JsonElement item in doc.RootElement.EnumerateArray())
+            {
+                string areaCode = GetJsonString(item, "idAreaAviso");
+                if (string.IsNullOrWhiteSpace(areaCode) || !targetAreas.Contains(areaCode))
+                {
+                    continue;
+                }
+
+                string lvlStr = GetJsonString(item, "awarenessLevelID").ToLowerInvariant();
+                WeatherAlertLevel level = lvlStr switch
+                {
+                    "red" => WeatherAlertLevel.Red,
+                    "orange" => WeatherAlertLevel.Orange,
+                    "yellow" => WeatherAlertLevel.Yellow,
+                    _ => WeatherAlertLevel.None
+                };
+                if (level == WeatherAlertLevel.None)
+                {
+                    continue;
+                }
+
+                DateTimeOffset? expires = TryParseOffset(GetJsonString(item, "endTime"));
+                if (expires.HasValue && expires.Value.ToUniversalTime() <= nowUtc)
+                {
+                    continue;
+                }
+
+                DateTimeOffset? onset = TryParseOffset(GetJsonString(item, "startTime"));
+                if (onset.HasValue && onset.Value.ToUniversalTime() > maxLookaheadUtc)
+                {
+                    continue;
+                }
+
+                int rank = LevelRank(level);
+                bool activeNow = !onset.HasValue || onset.Value.ToUniversalTime() <= nowUtc;
+                DateTimeOffset sortOnset = onset?.ToUniversalTime() ?? nowUtc;
+
+                if (bestEl is null
+                    || rank > bestRank
+                    || (rank == bestRank && activeNow && !bestActive)
+                    || (rank == bestRank && activeNow == bestActive && sortOnset < bestOnset))
+                {
+                    bestLevel = level;
+                    bestRank = rank;
+                    bestActive = activeNow;
+                    bestOnset = sortOnset;
+                    bestEl = item;
+                }
+            }
+
+            if (bestEl is null)
+            {
+                return null;
+            }
+
+            JsonElement chosen = bestEl.Value;
+            string typeName = GetJsonString(chosen, "awarenessTypeName");
+            string text = GetJsonString(chosen, "text");
+            DateTimeOffset? pOnset = TryParseOffset(GetJsonString(chosen, "startTime"));
+            DateTimeOffset? pExpires = TryParseOffset(GetJsonString(chosen, "endTime"));
+
+            string title = ResolveCapAlertTitle(string.Empty, typeName, normalizedLang);
+            string detail = FormatAlertDetail(pOnset, pExpires, localNow, normalizedLang);
+            const string source = "IPMA";
+            string levelLabel = GetLevelLabel(bestLevel, normalizedLang);
+            string timeRange = FormatTimeRange(pOnset, pExpires);
+
+            var sb = new StringBuilder();
+            sb.Append(levelLabel).Append(" · ").Append(title);
+            if (!string.IsNullOrWhiteSpace(timeRange))
+            {
+                sb.Append('\n').Append(timeRange);
+            }
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                sb.Append('\n').Append(text);
+            }
+            sb.Append('\n').Append(LocalizationService.Format(normalizedLang, "alert_source_official", source));
+
+            return new WeatherAlertInfo(
+                bestLevel,
+                title,
+                detail,
+                sb.ToString(),
+                IsOfficial: true,
+                SourceName: source,
+                Description: string.IsNullOrWhiteSpace(text) ? typeName : text,
+                Certainty: "Likely");
+        }
+
+        private static HashSet<string> ResolveIpmaAreaIds(GeoRegionInfo region)
+        {
+            var areas = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void tryMatch(string? raw)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    return;
+                }
+
+                foreach (string part in raw.Split(new[] { '/', ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    string norm = NormalizeAreaToken(part);
+                    if (norm.Length < 3) continue;
+
+                    if (PortugueseDistrictToIpmaArea.TryGetValue(norm, out string[]? exact))
+                    {
+                        foreach (string code in exact) areas.Add(code);
+                        continue;
+                    }
+
+                    foreach (KeyValuePair<string, string[]> kvp in PortugueseDistrictToIpmaArea)
+                    {
+                        if (norm.Contains(kvp.Key, StringComparison.Ordinal))
+                        {
+                            foreach (string code in kvp.Value) areas.Add(code);
+                        }
+                    }
+                }
+            }
+
+            if (string.Equals(region.IsoLvl4?.Trim(), "PT-30", StringComparison.OrdinalIgnoreCase))
+            {
+                tryMatch("madeira");
+            }
+            else if (string.Equals(region.IsoLvl4?.Trim(), "PT-20", StringComparison.OrdinalIgnoreCase))
+            {
+                tryMatch("acores");
+            }
+
+            tryMatch(region.State);
+            tryMatch(region.Province);
+            tryMatch(region.County);
+            tryMatch(region.Municipality);
+            tryMatch(region.City);
+            return areas;
+        }
+
+        internal static WeatherAlertInfo? ParseMetNorwayJson(string json, DateTime localNow, string lang = "it")
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("features", out JsonElement featuresEl) ||
+                featuresEl.ValueKind != JsonValueKind.Array ||
+                featuresEl.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            string normalizedLang = LocalizationService.NormalizeLanguage(lang);
+            DateTimeOffset nowUtc = ToLocalDateTimeOffset(localNow).ToUniversalTime();
+            DateTimeOffset maxLookaheadUtc = nowUtc.AddHours(18);
+
+            WeatherAlertLevel bestLevel = WeatherAlertLevel.None;
+            int bestRank = -1;
+            bool bestActive = false;
+            int bestCertRank = -2;
+            DateTimeOffset bestOnset = DateTimeOffset.MaxValue;
+            JsonElement? bestFeature = null;
+
+            foreach (JsonElement feat in featuresEl.EnumerateArray())
+            {
+                if (!feat.TryGetProperty("properties", out JsonElement props) ||
+                    props.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                string status = GetJsonString(props, "status");
+                if (!string.IsNullOrWhiteSpace(status) &&
+                    !string.Equals(status, "Actual", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string msgType = GetFirstNonEmpty(GetJsonString(props, "msgType"), GetJsonString(props, "messageType"));
+                if (string.Equals(msgType, "Cancel", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                int certRank = CertaintyRank(GetJsonString(props, "certainty"));
+                if (certRank < 0)
+                {
+                    continue;
+                }
+
+                string awarenessLvl = GetJsonString(props, "awareness_level").ToLowerInvariant();
+                if (awarenessLvl.Contains("green", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string sev = GetJsonString(props, "severity");
+                WeatherAlertLevel level = MapSeverityAndEvent(sev, awarenessLvl);
+                if (level == WeatherAlertLevel.None)
+                {
+                    continue;
+                }
+
+                DateTimeOffset? onset = null;
+                DateTimeOffset? expires = null;
+                if (feat.TryGetProperty("when", out JsonElement whenEl) &&
+                    whenEl.ValueKind == JsonValueKind.Object &&
+                    whenEl.TryGetProperty("interval", out JsonElement intervalEl) &&
+                    intervalEl.ValueKind == JsonValueKind.Array)
+                {
+                    int len = intervalEl.GetArrayLength();
+                    if (len >= 1 && intervalEl[0].ValueKind == JsonValueKind.String)
+                    {
+                        onset = TryParseOffset(intervalEl[0].GetString());
+                    }
+                    if (len >= 2 && intervalEl[1].ValueKind == JsonValueKind.String)
+                    {
+                        expires = TryParseOffset(intervalEl[1].GetString());
+                    }
+                }
+
+                onset ??= TryParseOffset(GetJsonString(props, "onset"))
+                    ?? TryParseOffset(GetJsonString(props, "effective"));
+                expires ??= TryParseOffset(GetJsonString(props, "expires"));
+
+                if (expires.HasValue && expires.Value.ToUniversalTime() <= nowUtc)
+                {
+                    continue;
+                }
+
+                if (onset.HasValue && onset.Value.ToUniversalTime() > maxLookaheadUtc)
+                {
+                    continue;
+                }
+
+                int rank = LevelRank(level);
+                bool activeNow = !onset.HasValue || onset.Value.ToUniversalTime() <= nowUtc;
+                DateTimeOffset sortOnset = onset?.ToUniversalTime() ?? nowUtc;
+
+                if (bestFeature is null
+                    || rank > bestRank
+                    || (rank == bestRank && activeNow && !bestActive)
+                    || (rank == bestRank && activeNow == bestActive && certRank > bestCertRank)
+                    || (rank == bestRank && activeNow == bestActive && certRank == bestCertRank && sortOnset < bestOnset))
+                {
+                    bestLevel = level;
+                    bestRank = rank;
+                    bestActive = activeNow;
+                    bestCertRank = certRank;
+                    bestOnset = sortOnset;
+                    bestFeature = feat;
+                }
+            }
+
+            if (bestFeature is null || !bestFeature.Value.TryGetProperty("properties", out JsonElement chosenProps))
+            {
+                return null;
+            }
+
+            DateTimeOffset? fOnset = null;
+            DateTimeOffset? fExpires = null;
+            if (bestFeature.Value.TryGetProperty("when", out JsonElement chosenWhen) &&
+                chosenWhen.TryGetProperty("interval", out JsonElement chosenInterval) &&
+                chosenInterval.ValueKind == JsonValueKind.Array)
+            {
+                if (chosenInterval.GetArrayLength() >= 1 && chosenInterval[0].ValueKind == JsonValueKind.String)
+                {
+                    fOnset = TryParseOffset(chosenInterval[0].GetString());
+                }
+                if (chosenInterval.GetArrayLength() >= 2 && chosenInterval[1].ValueKind == JsonValueKind.String)
+                {
+                    fExpires = TryParseOffset(chosenInterval[1].GetString());
+                }
+            }
+
+            fOnset ??= TryParseOffset(GetJsonString(chosenProps, "onset"))
+                ?? TryParseOffset(GetJsonString(chosenProps, "effective"));
+            fExpires ??= TryParseOffset(GetJsonString(chosenProps, "expires"));
+
+            string eventName = GetFirstNonEmpty(
+                GetJsonString(chosenProps, "eventAwarenessName"),
+                GetJsonString(chosenProps, "event"));
+            string desc = GetFirstNonEmpty(
+                GetJsonString(chosenProps, "description"),
+                GetJsonString(chosenProps, "instruction"),
+                GetJsonString(chosenProps, "area"));
+            string certainty = NormalizeCertainty(GetJsonString(chosenProps, "certainty"));
+
+            string title = ResolveCapAlertTitle(string.Empty, eventName, normalizedLang);
+            string detail = FormatAlertDetail(fOnset, fExpires, localNow, normalizedLang);
+            const string source = "MET Norway";
+            string levelLabel = GetLevelLabel(bestLevel, normalizedLang);
+            string timeRange = FormatTimeRange(fOnset, fExpires);
+
+            var sb = new StringBuilder();
+            sb.Append(levelLabel).Append(" · ").Append(title);
+            if (!string.IsNullOrWhiteSpace(timeRange))
+            {
+                sb.Append('\n').Append(timeRange);
+            }
+            if (!string.IsNullOrWhiteSpace(desc))
+            {
+                sb.Append('\n').Append(desc);
+            }
+            sb.Append('\n').Append(LocalizationService.Format(normalizedLang, "alert_source_official", source));
+
+            return new WeatherAlertInfo(
+                bestLevel,
+                title,
+                detail,
+                sb.ToString(),
+                IsOfficial: true,
+                SourceName: source,
+                Description: desc,
+                Certainty: certainty);
+        }
+
         private static string? ResolveExpectedEmmaId(GeoRegionInfo region)
         {
             if (!string.IsNullOrWhiteSpace(region.IsoLvl4) &&
@@ -1279,23 +2144,25 @@ namespace Dsk.Weather.Services
             }
 
             string lower = (eventText ?? string.Empty).ToLowerInvariant();
-            if (lower.Contains("thunder") || lower.Contains("storm") || lower.Contains("gewitter") || lower.Contains("onweer") || lower.Contains("tormenta") || lower.Contains("temporale") || lower.Contains("trovoada"))
+            if (lower.Contains("idrogeol") || lower.Contains("hydrogeo"))
+                return LocalizationService.T(lang, "alert_cap_hydro");
+            if (lower.Contains("thunder") || lower.Contains("storm") || lower.Contains("gewitter") || lower.Contains("onweer") || lower.Contains("tormenta") || lower.Contains("temporale") || lower.Contains("trovoada") || lower.Contains("torden"))
                 return LocalizationService.T(lang, "alert_cap_storm");
-            if (lower.Contains("wind") || lower.Contains("gust") || lower.Contains("sturm") || lower.Contains("viento") || lower.Contains("vento") || lower.Contains("böen"))
+            if (lower.Contains("wind") || lower.Contains("gust") || lower.Contains("sturm") || lower.Contains("viento") || lower.Contains("vento") || lower.Contains("böen") || lower.Contains("gale") || lower.Contains("kuling") || lower.Contains("vind"))
                 return LocalizationService.T(lang, "alert_cap_wind");
-            if (lower.Contains("frost") || lower.Contains("cold") || lower.Contains("ice") || lower.Contains("glätte") || lower.Contains("gelo") || lower.Contains("ijzel"))
+            if (lower.Contains("frost") || lower.Contains("cold") || lower.Contains("ice") || lower.Contains("glätte") || lower.Contains("gelo") || lower.Contains("ijzel") || lower.Contains("frio"))
                 return LocalizationService.T(lang, "alert_cap_cold");
-            if (lower.Contains("snow") || lower.Contains("schnee") || lower.Contains("nieve") || lower.Contains("neve") || lower.Contains("sneeuw"))
+            if (lower.Contains("snow") || lower.Contains("schnee") || lower.Contains("nieve") || lower.Contains("neve") || lower.Contains("sneeuw") || lower.Contains("snø"))
                 return LocalizationService.T(lang, "alert_cap_snow_ice");
-            if (lower.Contains("flood") || lower.Contains("alluv"))
+            if (lower.Contains("flood") || lower.Contains("alluv") || lower.Contains("idraul") || lower.Contains("flom"))
                 return LocalizationService.T(lang, "alert_cap_flood");
-            if (lower.Contains("rain") || lower.Contains("regen") || lower.Contains("lluvia") || lower.Contains("pioggia") || lower.Contains("chuva") || lower.Contains("precipit"))
+            if (lower.Contains("rain") || lower.Contains("regen") || lower.Contains("lluvia") || lower.Contains("pioggia") || lower.Contains("chuva") || lower.Contains("precipit") || lower.Contains("nedbør") || lower.Contains("regn"))
                 return LocalizationService.T(lang, "alert_cap_rain");
             if (lower.Contains("fog") || lower.Contains("nebel") || lower.Contains("mist") || lower.Contains("niebla") || lower.Contains("nebbia") || lower.Contains("nevoeiro"))
                 return LocalizationService.T(lang, "alert_cap_fog");
-            if (lower.Contains("heat") || lower.Contains("hitze") || lower.Contains("calor") || lower.Contains("caldo") || lower.Contains("temperature"))
+            if (lower.Contains("heat") || lower.Contains("hitze") || lower.Contains("calor") || lower.Contains("caldo") || lower.Contains("temperature") || lower.Contains("quente"))
                 return LocalizationService.T(lang, "alert_cap_heat");
-            if (lower.Contains("coast") || lower.Contains("wave") || lower.Contains("mare"))
+            if (lower.Contains("coast") || lower.Contains("wave") || lower.Contains("mare") || lower.Contains("marítim") || lower.Contains("maritim") || lower.Contains("agitaç") || lower.Contains("agitac"))
                 return LocalizationService.T(lang, "alert_cap_coastal");
             if (lower.Contains("avalan"))
                 return LocalizationService.T(lang, "alert_cap_avalanche");
