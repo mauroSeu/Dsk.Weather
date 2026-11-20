@@ -460,7 +460,7 @@
                                     CornerRadius="12"
                                     Padding="4,2"
                                     Cursor="Hand"
-                                    ToolTip="Clicca per aprire le previsioni a 5 giorni"
+                                    ToolTip="Clicca per aprire le previsioni a 7 giorni"
                                     MouseLeftButtonUp="WeatherPill_Click">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <controls:WeatherIconView x:Name="MinimalWeatherIcon"
@@ -488,20 +488,20 @@
                     </Grid>
 
                     <!-- LAYOUT 3: Material Compatto -->
-                    <Grid x:Name="LayoutMaterialCompact" Margin="20,14,44,14" Visibility="Collapsed">
+                    <Grid x:Name="LayoutMaterialCompact" Margin="18,14,18,14" Visibility="Collapsed">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock x:Name="CompactClockText"
                                            FontFamily="Segoe UI Variable Display, Segoe UI"
-                                           FontSize="42"
+                                           FontSize="44"
                                            FontWeight="Light"
-                                           LineHeight="44"
+                                           LineHeight="46"
                                            LineStackingStrategy="BlockLineHeight"
                                            Typography.NumeralAlignment="Tabular" />
                                 <TextBlock x:Name="CompactSecondsText"
@@ -522,7 +522,7 @@
                             </StackPanel>
                             <TextBlock x:Name="CompactDateText"
                                        FontFamily="Segoe UI Variable Text, Segoe UI"
-                                       FontSize="12.5"
+                                       FontSize="12"
                                        FontWeight="Medium"
                                        Margin="2,2,0,0" />
                         </StackPanel>
@@ -530,35 +530,46 @@
                         <Border x:Name="CompactDivider"
                                 Grid.Column="1"
                                 Width="1"
-                                Margin="18,4" />
+                                Margin="15,6"
+                                Opacity="0.45" />
 
                         <Border x:Name="CompactWeatherPill"
                                 Grid.Column="2"
-                                CornerRadius="16"
-                                Padding="10,6"
+                                Background="Transparent"
+                                CornerRadius="14"
+                                Padding="6,4"
                                 Cursor="Hand"
                                 VerticalAlignment="Center"
-                                ToolTip="Clicca per aprire le previsioni a 5 giorni"
+                                HorizontalAlignment="Stretch"
+                                ToolTip="Clicca per aprire le previsioni a 7 giorni"
+                                MouseEnter="CompactWeatherPill_MouseEnter"
+                                MouseLeave="CompactWeatherPill_MouseLeave"
                                 MouseLeftButtonUp="WeatherPill_Click">
                             <StackPanel Orientation="Vertical" VerticalAlignment="Center">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <controls:WeatherIconView x:Name="CompactWeatherIcon"
-                                                              Width="28"
-                                                              Height="28"
+                                                              Width="26"
+                                                              Height="26"
                                                               Animate="True"
-                                                              Margin="0,0,8,0" />
+                                                              Margin="0,0,7,0" />
                                     <TextBlock x:Name="CompactTempText"
                                                FontFamily="Segoe UI Variable Display, Segoe UI"
-                                               FontSize="26"
-                                               FontWeight="SemiBold"
+                                               FontSize="28"
+                                               FontWeight="Light"
+                                               Typography.NumeralAlignment="Tabular"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="CompactRangeText"
+                                               FontFamily="Segoe UI Variable Text, Segoe UI"
+                                               FontSize="11"
+                                               Margin="6,6,0,0"
                                                Typography.NumeralAlignment="Tabular"
                                                VerticalAlignment="Center" />
                                 </StackPanel>
                                 <TextBlock x:Name="CompactLocationText"
                                            FontFamily="Segoe UI Variable Text, Segoe UI"
-                                           FontSize="12"
+                                           FontSize="11.5"
                                            Margin="2,2,0,0"
-                                           MaxWidth="160"
+                                           MaxWidth="148"
                                            TextTrimming="CharacterEllipsis"
                                            MouseLeftButtonUp="LocationSummary_Click" />
                             </StackPanel>

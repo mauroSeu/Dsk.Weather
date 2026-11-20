@@ -111,10 +111,50 @@ namespace Dsk.Weather.Windows
                 QuickNoteBox.Text = _draft.QuickNote;
                 LockPositionCheck.IsChecked = _draft.LockPosition;
                 AutostartCheck.IsChecked = _autostartService.IsEnabled();
+                DefaultStyleCheck.IsChecked = _draft.IsDefaultStyle();
             }
             finally
             {
                 _isInitializing = false;
+            }
+        }
+
+        private void SyncDefaultStyleSwitch()
+        {
+            if (DefaultStyleCheck is null || _draft is null)
+            {
+                return;
+            }
+
+            bool isRealPreview = PreviewSceneCombo?.SelectedItem is ComboBoxItem cbi
+                ? string.Equals(cbi.Tag as string, "Real", StringComparison.Ordinal)
+                : true;
+
+            bool prev = _isInitializing;
+            _isInitializing = true;
+            try
+            {
+                DefaultStyleCheck.IsChecked = _draft.IsDefaultStyle() && isRealPreview;
+            }
+            finally
+            {
+                _isInitializing = prev;
+            }
+        }
+
+        private void DefaultStyleCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_isInitializing || _draft is null)
+            {
+                return;
+            }
+
+            if (DefaultStyleCheck.IsChecked == true)
+            {
+                _draft.ResetStyleToDefaults();
+                _onPreviewChanged(null);
+                PopulateUiFromDraft();
+                _onSettingsChanged(_draft);
             }
         }
 
@@ -236,6 +276,7 @@ namespace Dsk.Weather.Windows
             _draft.WeatherModel = ParseSelectedTag(WeatherModelCombo, _draft.WeatherModel);
             _draft.PinMode = ParseSelectedTag(PinModeCombo, _draft.PinMode);
 
+            SyncDefaultStyleSwitch();
             _onSettingsChanged(_draft);
         }
 
@@ -257,6 +298,7 @@ namespace Dsk.Weather.Windows
             _draft.BackgroundOpacity = Math.Round(OpacitySlider.Value, 2);
             OpacityValueText.Text = $"{Math.Round(_draft.BackgroundOpacity * 100)}%";
 
+            SyncDefaultStyleSwitch();
             _onSettingsChanged(_draft);
         }
 
@@ -275,6 +317,7 @@ namespace Dsk.Weather.Windows
             _draft.EnableWeatherAlerts = EnableWeatherAlertsCheck.IsChecked == true;
             _draft.LockPosition = LockPositionCheck.IsChecked == true;
 
+            SyncDefaultStyleSwitch();
             _onSettingsChanged(_draft);
         }
 
@@ -514,6 +557,8 @@ namespace Dsk.Weather.Windows
             {
                 _onPreviewChanged(null);
             }
+
+            SyncDefaultStyleSwitch();
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

@@ -242,6 +242,26 @@ namespace Dsk.Weather.Models
             return next;
         }
 
+        public bool IsDefaultStyle()
+        {
+            return LayoutStyle == WidgetLayoutStyle.PixelCard
+                && ThemeMode == WidgetThemeMode.DynamicWallpaper
+                && Math.Abs(Scale - 1.0) < 0.01
+                && Math.Abs(BackgroundOpacity - 0.80) < 0.01
+                && EnableDynamicAtmosphere
+                && EnableWeatherAnimations;
+        }
+
+        public void ResetStyleToDefaults()
+        {
+            LayoutStyle = WidgetLayoutStyle.PixelCard;
+            ThemeMode = WidgetThemeMode.DynamicWallpaper;
+            Scale = 1.0;
+            BackgroundOpacity = 0.80;
+            EnableDynamicAtmosphere = true;
+            EnableWeatherAnimations = true;
+        }
+
         public WidgetSettings Clone()
         {
             var clonedFavorites = new List<SavedLocation>(FavoriteLocations?.Count ?? 0);

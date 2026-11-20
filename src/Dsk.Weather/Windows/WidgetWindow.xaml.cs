@@ -442,9 +442,11 @@ namespace Dsk.Weather.Windows
             SolidColorBrush cardSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, _settings.BackgroundOpacity);
             SolidColorBrush drawerSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, Math.Max(0.84, _settings.BackgroundOpacity));
 
-            if (_settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent)
+            bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
+            if (isMinimal)
             {
-                MainCard.Background = Brushes.Transparent;
+                // Alpha = 1 invisibile ma garantisce hit-testing mouse su tutta la card layered
+                MainCard.Background = MaterialThemePalette.ToBrush(Color.FromArgb(1, 0, 0, 0));
                 MainCard.BorderBrush = Brushes.Transparent;
                 MainCard.BorderThickness = new Thickness(0);
                 MainCard.Effect = null;
@@ -487,17 +489,18 @@ namespace Dsk.Weather.Windows
             CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.45);
             CardHourlyContainer.Visibility = _settings.ShowHourlyStrip ? Visibility.Visible : Visibility.Collapsed;
 
-            // Stile MaterialCompact
+            // Stile MaterialCompact (pulito senza riquadro opaco invasivo)
             CompactClockText.Foreground = textBrush;
             CompactSecondsText.Foreground = mutedBrush;
             CompactAmPmText.Foreground = primaryBrush;
             CompactDateText.Foreground = mutedBrush;
             CompactDivider.Background = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.5);
-            CompactWeatherPill.Background = pillBrush;
+            CompactWeatherPill.Background = Brushes.Transparent;
             CompactTempText.Foreground = textBrush;
+            CompactRangeText.Foreground = mutedBrush;
             CompactLocationText.Foreground = mutedBrush;
 
-            // Drawer 5 giorni + Radar
+            // Drawer 7 giorni + Radar
             ForecastDrawer.Background = drawerSurfaceBrush;
             ForecastDrawer.BorderBrush = borderBrush;
             DrawerMetaText.Foreground = mutedBrush;
@@ -518,12 +521,14 @@ namespace Dsk.Weather.Windows
             RadarView.ApplyPalette(_currentPalette, IsRadarNightMode());
 
             // Stile pulsante discreto hover
-            SolidColorBrush btnBg = _settings.ThemeMode == WidgetThemeMode.MaterialLight
-                ? MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0), 0.90)
-                : MaterialThemePalette.ToBrush(Color.FromRgb(0x0F, 0x17, 0x2A), 0.55);
+            SolidColorBrush btnBg = isMinimal
+                ? MaterialThemePalette.ToBrush(Color.FromArgb(0x99, 0x0F, 0x17, 0x2A))
+                : (_settings.ThemeMode == WidgetThemeMode.MaterialLight
+                    ? MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0), 0.90)
+                    : MaterialThemePalette.ToBrush(Color.FromRgb(0x0F, 0x17, 0x2A), 0.55));
             BtnSettings.Background = btnBg;
-            BtnSettings.Foreground = textBrush;
-            BtnSettings.BorderBrush = borderBrush;
+            BtnSettings.Foreground = isMinimal ? MaterialThemePalette.ToBrush(Color.FromRgb(0xF8, 0xFA, 0xFC)) : textBrush;
+            BtnSettings.BorderBrush = isMinimal ? MaterialThemePalette.ToBrush(Color.FromArgb(0x66, 0xFF, 0xFF, 0xFF)) : borderBrush;
 
             BtnHourlyLeft.Background = btnBg;
             BtnHourlyLeft.Foreground = textBrush;
@@ -666,6 +671,7 @@ namespace Dsk.Weather.Windows
                 MinimalWeatherText.Text = "--°";
                 MinimalSubText.Text = fallbackCity;
                 CompactTempText.Text = "--°";
+                CompactRangeText.Text = string.Empty;
                 CompactLocationText.Text = fallbackCity;
                 ChipSunText.Text = "-- / --";
                 ChipUvText.Text = "--";
@@ -710,6 +716,7 @@ namespace Dsk.Weather.Windows
             CompactWeatherIcon.WeatherCode = w.WeatherCode;
             CompactWeatherIcon.IsDay = w.IsDay;
             CompactTempText.Text = currentTemp;
+            CompactRangeText.Text = $"{maxTemp}/{minTemp}";
             CompactLocationText.Text = $"{city} · {condition}";
 
             // Drawer header + chip dettagli
@@ -1219,6 +1226,16 @@ namespace Dsk.Weather.Windows
             };
             WeatherPillScale.BeginAnimation(ScaleTransform.ScaleXProperty, reset);
             WeatherPillScale.BeginAnimation(ScaleTransform.ScaleYProperty, reset);
+        }
+
+        private void CompactWeatherPill_MouseEnter(object sender, MouseEventArgs e)
+        {
+            CompactWeatherPill.Background = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.38);
+        }
+
+        private void CompactWeatherPill_MouseLeave(object sender, MouseEventArgs e)
+        {
+            CompactWeatherPill.Background = Brushes.Transparent;
         }
 
         private void WeatherPill_Click(object sender, MouseButtonEventArgs e)

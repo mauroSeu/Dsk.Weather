@@ -702,6 +702,14 @@
                             <StackPanel>
                                 <TextBlock Text="Stile &amp; Colori (Anteprima Live)" Style="{StaticResource SectionTitleStyle}" />
 
+                                <CheckBox x:Name="DefaultStyleCheck"
+                                          Content="Usa stile predefinito (consigliato)"
+                                          Style="{StaticResource MaterialSwitchStyle}"
+                                          Margin="0,0,0,10"
+                                          ToolTip="Ripristina i valori predefiniti di Stile e Colori senza toccare le tue città"
+                                          Checked="DefaultStyleCheck_Changed"
+                                          Unchecked="DefaultStyleCheck_Changed" />
+
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="130" />

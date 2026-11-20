@@ -34,7 +34,8 @@ namespace Dsk.Weather.Tests
                 ("WeatherAnimationsAllTenScenesStartCleanly", TestAllTenScenesAndIconsStartCleanly),
                 ("SettingsWindowAndContextMenuInstantiation", TestSettingsWindowAndContextMenuInstantiation),
                 ("FavoriteLocationCycleHelper", TestFavoriteLocationCycle),
-                ("WeatherAlertsEvaluationAndSeverity", TestWeatherAlertsEvaluationAndSeverity)
+                ("WeatherAlertsEvaluationAndSeverity", TestWeatherAlertsEvaluationAndSeverity),
+                ("DefaultStyleCheckAndResetHelper", TestDefaultStyleCheckAndReset)
             };
 
             int failures = 0;
@@ -702,6 +703,26 @@ namespace Dsk.Weather.Tests
                     Directory.Delete(tempDir, recursive: true);
                 }
             }
+        }
+
+        private static void TestDefaultStyleCheckAndReset()
+        {
+            var cfg = new WidgetSettings();
+            cfg.AddOrSelectLocation("Serramanna", "Italia", 39.42335, 8.92243);
+            cfg.EnableWeatherAlerts = false;
+            AssertEqual(true, cfg.IsDefaultStyle(), "Configurazione iniziale deve risultare in stile predefinito");
+
+            cfg.LayoutStyle = WidgetLayoutStyle.MaterialCompact;
+            cfg.ThemeMode = WidgetThemeMode.MaterialLight;
+            cfg.BackgroundOpacity = 0.45;
+            cfg.Scale = 1.25;
+            cfg.EnableWeatherAnimations = false;
+            AssertEqual(false, cfg.IsDefaultStyle(), "Dopo modifica stile IsDefaultStyle deve essere false");
+
+            cfg.ResetStyleToDefaults();
+            AssertEqual(true, cfg.IsDefaultStyle(), "Dopo ResetStyleToDefaults deve tornare in stile predefinito");
+            AssertEqual("Serramanna", cfg.CityName, "ResetStyleToDefaults non deve toccare la città");
+            AssertEqual(false, cfg.EnableWeatherAlerts, "ResetStyleToDefaults non deve toccare EnableWeatherAlerts");
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

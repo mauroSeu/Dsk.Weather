@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-17%2F17%20Passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-18%2F18%20Passing-brightgreen?style=flat-square)
 
 Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Allerte Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
 
@@ -16,7 +16,7 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.3.0`)
+## Funzionalità Principali (`v1.3.1`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
 - **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour).
@@ -62,7 +62,7 @@ Per gestire l'avvio automatico con Windows:
 # Compilazione intera solution (App + Test)
 dotnet build Dsk.Weather.sln -c Release
 
-# Esecuzione suite test unitari deterministici (17/17 check)
+# Esecuzione suite test unitari deterministici (18/18 check)
 dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
 
 # Pubblicazione pacchetto finale in dist\
