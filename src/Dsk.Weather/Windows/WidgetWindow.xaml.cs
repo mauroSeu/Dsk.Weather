@@ -1,0 +1,1493 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Net.NetworkInformation;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
+using System.Windows.Threading;
+using Microsoft.Win32;
+using Dsk.Weather.Models;
+using Dsk.Weather.Services;
+
+namespace Dsk.Weather.Windows
+{
+    public partial class WidgetWindow : Window
+    {
+        private static readonly CultureInfo ItalianCulture = CultureInfo.GetCultureInfo("it-IT");
+
+        public static readonly DependencyProperty AnimatedHourlyOffsetProperty =
+            DependencyProperty.Register(
+                nameof(AnimatedHourlyOffset),
+                typeof(double),
+                typeof(WidgetWindow),
+                new PropertyMetadata(0.0, OnAnimatedHourlyOffsetChanged));
+
+        private readonly SettingsService _settingsService;
+        private readonly WeatherService _weatherService;
+        private readonly MaterialColorService _colorService;
+        private readonly DesktopPinService _pinService;
+        private readonly AutostartService _autostartService;
+        private readonly Action _openSettingsAction;
+        private readonly Action _exitAction;
+
+        private readonly DispatcherTimer _clockTimer;
+        private readonly DispatcherTimer _weatherTimer;
+        private readonly DispatcherTimer _wallpaperWatchTimer;
+
+        private WidgetSettings _settings;
+        private WeatherSnapshot? _currentWeather;
+        private WeatherIconKind? _previewWeatherOverride;
+        private MaterialThemePalette _currentPalette;
+        private CancellationTokenSource? _weatherFetchCts;
+
+        private string _lastDisplayedClock = string.Empty;
+        private string _lastDisplayedMinute = string.Empty;
+        private string _lastDisplayedDate = string.Empty;
+        private string? _lastWallpaperPath;
+        private DateTime _lastWallpaperWriteUtc;
+        private bool _isDrawerOpen;
+        private bool _isRadarTabActive;
+        private int _weatherRequestVersion;
+        private int _startupRetryCount;
+        private bool _isHourlyPointerDown;
+        private bool _isHourlyDragging;
+        private bool _isHourlyScrollAnimating;
+        private Point _hourlyDragStart;
+        private double _hourlyStartOffset;
+        private double _hourlyScrollTarget;
+
+        public double AnimatedHourlyOffset
+        {
+            get => (double)GetValue(AnimatedHourlyOffsetProperty);
+            set => SetValue(AnimatedHourlyOffsetProperty, value);
+        }
+
+        private static void OnAnimatedHourlyOffsetChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is WidgetWindow window)
+            {
+                window.HourlyScrollViewer.ScrollToHorizontalOffset((double)e.NewValue);
+            }
+        }
+
+        public WidgetWindow(
+            WidgetSettings settings,
+            SettingsService settingsService,
+            WeatherService weatherService,
+            MaterialColorService colorService,
+            DesktopPinService pinService,
+            AutostartService autostartService,
+            Action openSettingsAction,
+            Action exitAction)
+        {
+            InitializeComponent();
+
+            _settings = settings.Clone();
+            _settings.Normalize();
+            _settingsService = settingsService;
+            _weatherService = weatherService;
+            _colorService = colorService;
+            _pinService = pinService;
+            _autostartService = autostartService;
+            _openSettingsAction = openSettingsAction;
+            _exitAction = exitAction;
+
+            _currentPalette = _colorService.BuildPalette(_settings.ThemeMode);
+
+            RadarView.ZoomChanged += zoom =>
+            {
+                _settings.RadarZoom = zoom;
+                _settingsService.Save(_settings);
+            };
+
+            _clockTimer = new DispatcherTimer(DispatcherPriority.Normal)
+            {
+                Interval = TimeSpan.FromMilliseconds(500)
+            };
+            _clockTimer.Tick += (_, _) =>
+            {
+                UpdateClockDisplay();
+                _pinService.CheckDesktopForegroundState();
+            };
+
+            _weatherTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromMinutes(15)
+            };
+            _weatherTimer.Tick += async (_, _) => await RefreshWeatherAsync();
+
+            _wallpaperWatchTimer = new DispatcherTimer(DispatcherPriority.Background)
+            {
+                Interval = TimeSpan.FromSeconds(60)
+            };
+            _wallpaperWatchTimer.Tick += (_, _) => CheckWallpaperChanges();
+        }
+
+        public WidgetSettings CurrentSettings => _settings;
+        public MaterialThemePalette CurrentPalette => _currentPalette;
+
+        private void WidgetWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            CaptureWallpaperSignature();
+            ApplyThemeAndLayout();
+            UpdateClockDisplay(force: true);
+            RestoreOrInitializePosition();
+
+            _pinService.Attach(this, _settings.PinMode, () => Dispatcher.Invoke(() =>
+            {
+                CaptureWallpaperSignature();
+                if (_settings.ThemeMode == WidgetThemeMode.DynamicWallpaper)
+                {
+                    ApplyThemeAndLayout();
+                }
+            }));
+
+            _clockTimer.Start();
+            _weatherTimer.Start();
+            _wallpaperWatchTimer.Start();
+
+            SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            NetworkChange.NetworkAvailabilityChanged += OnNetworkAvailabilityChanged;
+
+            WeatherSnapshot? cached = _settingsService.LoadWeatherCache();
+            if (cached is not null)
+            {
+                cached.IsFromCache = true;
+                _currentWeather = cached;
+                ApplyThemeAndLayout();
+                UpdateWeatherDisplay();
+            }
+
+            _ = InitializeLocationAndWeatherAsync();
+        }
+
+        private void WidgetWindow_Closed(object? sender, EventArgs e)
+        {
+            SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+            NetworkChange.NetworkAvailabilityChanged -= OnNetworkAvailabilityChanged;
+            _clockTimer.Stop();
+            _weatherTimer.Stop();
+            _wallpaperWatchTimer.Stop();
+            _weatherFetchCts?.Cancel();
+            _weatherFetchCts?.Dispose();
+            WeatherScene.Stop();
+            RadarView.Deactivate();
+            _pinService.Detach();
+        }
+
+        private void OnPowerModeChanged(object sender, PowerModeChangedEventArgs e)
+        {
+            if (e.Mode == PowerModes.Resume)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                {
+                    UpdateClockDisplay(force: true);
+                    _ = RefreshWeatherAsync();
+                }));
+            }
+        }
+
+        private void OnNetworkAvailabilityChanged(object? sender, NetworkAvailabilityEventArgs e)
+        {
+            if (e.IsAvailable)
+            {
+                Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+                {
+                    _ = RefreshWeatherAsync();
+                }));
+            }
+        }
+
+        public void ApplySettings(WidgetSettings updated, bool refreshWeather)
+        {
+            bool pinChanged = _settings.PinMode != updated.PinMode;
+            bool themeOrLocationChanged =
+                _settings.ThemeMode != updated.ThemeMode ||
+                Math.Abs(_settings.Latitude - updated.Latitude) > 0.0001 ||
+                Math.Abs(_settings.Longitude - updated.Longitude) > 0.0001;
+
+            _settings = updated.Clone();
+            _settings.Normalize();
+
+            ApplyThemeAndLayout();
+            UpdateClockDisplay(force: true);
+            UpdateWeatherDisplay();
+
+            if (pinChanged)
+            {
+                _pinService.ApplyMode(_settings.PinMode);
+            }
+
+            ClampAndPersistCurrentPosition();
+
+            if (_isDrawerOpen && _isRadarTabActive && themeOrLocationChanged)
+            {
+                _ = ActivateRadarAsync();
+            }
+
+            if (refreshWeather)
+            {
+                _ = RefreshWeatherAsync();
+            }
+        }
+
+        public void SetAnimationPreview(WeatherIconKind? previewKind)
+        {
+            _previewWeatherOverride = previewKind;
+            ApplyThemeAndLayout();
+        }
+
+        public void CenterOnPrimaryScreen()
+        {
+            UpdateLayout();
+            Rect workArea = SystemParameters.WorkArea;
+            double targetLeft = workArea.Left + Math.Max(0.0, (workArea.Width - ActualWidth) / 2.0);
+            double targetTop = workArea.Top + Math.Max(0.0, (workArea.Height - ActualHeight) / 2.0);
+
+            Left = Math.Round(targetLeft);
+            Top = Math.Round(targetTop);
+            _settings.Left = Left;
+            _settings.Top = Top;
+            _settingsService.Save(_settings);
+        }
+
+        public void ResetToDefaultPosition()
+        {
+            UpdateLayout();
+            Rect workArea = SystemParameters.WorkArea;
+            double targetLeft = workArea.Right - ActualWidth - 48.0;
+            double targetTop = workArea.Top + 40.0;
+
+            (double clampedLeft, double clampedTop) = SettingsService.ClampPosition(
+                targetLeft,
+                targetTop,
+                ActualWidth,
+                ActualHeight,
+                SystemParameters.VirtualScreenLeft,
+                SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth,
+                SystemParameters.VirtualScreenHeight);
+
+            Left = Math.Round(clampedLeft);
+            Top = Math.Round(clampedTop);
+            _settings.Left = Left;
+            _settings.Top = Top;
+            _settingsService.Save(_settings);
+        }
+
+        private async Task InitializeLocationAndWeatherAsync()
+        {
+            if (!_settings.LocationInitialized || string.IsNullOrWhiteSpace(_settings.CityName))
+            {
+                GeoLocationResult detected = await _weatherService.DetectLocationByIpAsync();
+                _settings.CityName = detected.Name;
+                _settings.CountryName = detected.Country;
+                _settings.Latitude = detected.Latitude;
+                _settings.Longitude = detected.Longitude;
+                _settings.LocationInitialized = true;
+                _settingsService.Save(_settings);
+                UpdateWeatherDisplay();
+            }
+
+            await RefreshWeatherAsync();
+        }
+
+        public async Task RefreshWeatherAsync()
+        {
+            int requestVersion = ++_weatherRequestVersion;
+            _weatherFetchCts?.Cancel();
+            _weatherFetchCts?.Dispose();
+            _weatherFetchCts = new CancellationTokenSource();
+            CancellationToken ct = _weatherFetchCts.Token;
+
+            try
+            {
+                if (_currentWeather is null)
+                {
+                    CardSummaryText.Text = "Aggiornamento meteo...";
+                    MinimalSubText.Text = "Aggiornamento meteo...";
+                }
+
+                string city = string.IsNullOrWhiteSpace(_settings.CityName) ? "Roma" : _settings.CityName;
+                WeatherSnapshot? result = await _weatherService.FetchForecastAsync(
+                    _settings.Latitude,
+                    _settings.Longitude,
+                    city,
+                    _settings.WeatherModel,
+                    ct);
+
+                if (ct.IsCancellationRequested || requestVersion != _weatherRequestVersion)
+                {
+                    return;
+                }
+
+                if (result is not null)
+                {
+                    _currentWeather = result;
+                }
+
+                ApplyThemeAndLayout();
+                UpdateWeatherDisplay();
+
+                if ((result is null || result.IsFromCache) && _startupRetryCount < 2)
+                {
+                    _startupRetryCount++;
+                    _ = ScheduleQuickWeatherRetryAsync(requestVersion);
+                }
+                else if (result is { IsFromCache: false })
+                {
+                    _startupRetryCount = 0;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Ignora cancellazione da refresh successivo
+            }
+        }
+
+        private async Task ScheduleQuickWeatherRetryAsync(int originVersion)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10));
+            if (originVersion == _weatherRequestVersion && (_currentWeather is null || _currentWeather.IsFromCache))
+            {
+                await RefreshWeatherAsync();
+            }
+        }
+
+        private void CardContentHost_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            double w = e.NewSize.Width;
+            double h = e.NewSize.Height;
+            if (w > 0 && h > 0)
+            {
+                var clip = new RectangleGeometry(new Rect(0, 0, w, h), 27.0, 27.0);
+                clip.Freeze();
+                CardContentHost.Clip = clip;
+            }
+        }
+
+        private void RestoreOrInitializePosition()
+        {
+            UpdateLayout();
+            if (double.IsNaN(_settings.Left) || double.IsNaN(_settings.Top))
+            {
+                ResetToDefaultPosition();
+                return;
+            }
+
+            (double clampedLeft, double clampedTop) = SettingsService.ClampPosition(
+                _settings.Left,
+                _settings.Top,
+                ActualWidth,
+                ActualHeight,
+                SystemParameters.VirtualScreenLeft,
+                SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth,
+                SystemParameters.VirtualScreenHeight);
+
+            Left = clampedLeft;
+            Top = clampedTop;
+            _settings.Left = Left;
+            _settings.Top = Top;
+        }
+
+        private void ClampAndPersistCurrentPosition()
+        {
+            UpdateLayout();
+            (double clampedLeft, double clampedTop) = SettingsService.ClampPosition(
+                Left,
+                Top,
+                ActualWidth,
+                ActualHeight,
+                SystemParameters.VirtualScreenLeft,
+                SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth,
+                SystemParameters.VirtualScreenHeight);
+
+            Left = clampedLeft;
+            Top = clampedTop;
+            _settings.Left = Left;
+            _settings.Top = Top;
+            _settingsService.Save(_settings);
+        }
+
+        private void ApplyThemeAndLayout()
+        {
+            _currentPalette = _colorService.BuildPalette(_settings.ThemeMode);
+            WidgetScaleTransform.ScaleX = _settings.Scale;
+            WidgetScaleTransform.ScaleY = _settings.Scale;
+
+            LayoutPixelCard.Visibility = _settings.LayoutStyle == WidgetLayoutStyle.PixelCard
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            LayoutPixelMinimal.Visibility = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+            LayoutMaterialCompact.Visibility = _settings.LayoutStyle == WidgetLayoutStyle.MaterialCompact
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
+            SolidColorBrush textBrush = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+            SolidColorBrush mutedBrush = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
+            SolidColorBrush primaryBrush = MaterialThemePalette.ToBrush(_currentPalette.Primary);
+            SolidColorBrush borderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.55);
+            SolidColorBrush pillBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.85);
+            SolidColorBrush cardSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, _settings.BackgroundOpacity);
+            SolidColorBrush drawerSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.Surface, Math.Max(0.84, _settings.BackgroundOpacity));
+
+            if (_settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent)
+            {
+                MainCard.Background = Brushes.Transparent;
+                MainCard.BorderBrush = Brushes.Transparent;
+                MainCard.BorderThickness = new Thickness(0);
+                MainCard.Effect = null;
+
+                var whiteBrush = MaterialThemePalette.ToBrush(Color.FromRgb(0xF8, 0xFA, 0xFC));
+                var softWhiteBrush = MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0));
+                MinimalClockText.Foreground = whiteBrush;
+                MinimalSecondsText.Foreground = softWhiteBrush;
+                MinimalAmPmText.Foreground = softWhiteBrush;
+                MinimalDateText.Foreground = whiteBrush;
+                MinimalWeatherText.Foreground = whiteBrush;
+                MinimalSubText.Foreground = softWhiteBrush;
+            }
+            else
+            {
+                WeatherSnapshot? atmosphereWeather = BuildAtmosphereSnapshotForTheme();
+                MainCard.Background = _settings.EnableDynamicAtmosphere
+                    ? MaterialColorService.BuildAtmosphereBrush(
+                        atmosphereWeather,
+                        _currentPalette,
+                        _settings.ThemeMode,
+                        _settings.BackgroundOpacity,
+                        DateTime.Now)
+                    : cardSurfaceBrush;
+                MainCard.BorderBrush = borderBrush;
+                MainCard.BorderThickness = new Thickness(1);
+                MainCard.Effect = (System.Windows.Media.Effects.Effect)FindResource("CardDropShadow");
+            }
+
+            // Stile PixelCard
+            CardDateText.Foreground = textBrush;
+            CardWeatherPill.Background = pillBrush;
+            CardPillTempText.Foreground = textBrush;
+            CardPillRangeText.Foreground = mutedBrush;
+            CardClockText.Foreground = textBrush;
+            CardSecondsText.Foreground = mutedBrush;
+            CardAmPmText.Foreground = primaryBrush;
+            CardInsightText.Foreground = string.IsNullOrWhiteSpace(_settings.QuickNote) ? primaryBrush : textBrush;
+            CardSummaryText.Foreground = mutedBrush;
+            CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.45);
+            CardHourlyContainer.Visibility = _settings.ShowHourlyStrip ? Visibility.Visible : Visibility.Collapsed;
+
+            // Stile MaterialCompact
+            CompactClockText.Foreground = textBrush;
+            CompactSecondsText.Foreground = mutedBrush;
+            CompactAmPmText.Foreground = primaryBrush;
+            CompactDateText.Foreground = mutedBrush;
+            CompactDivider.Background = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.5);
+            CompactWeatherPill.Background = pillBrush;
+            CompactTempText.Foreground = textBrush;
+            CompactLocationText.Foreground = mutedBrush;
+
+            // Drawer 5 giorni + Radar
+            ForecastDrawer.Background = drawerSurfaceBrush;
+            ForecastDrawer.BorderBrush = borderBrush;
+            DrawerMetaText.Foreground = mutedBrush;
+
+            SolidColorBrush chipBg = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.72);
+            ChipSunBorder.Background = chipBg;
+            ChipUvBorder.Background = chipBg;
+            ChipWindBorder.Background = chipBg;
+            ChipSunTitle.Foreground = mutedBrush;
+            ChipUvTitle.Foreground = mutedBrush;
+            ChipWindTitle.Foreground = mutedBrush;
+            ChipSunText.Foreground = textBrush;
+            ChipUvText.Foreground = textBrush;
+            ChipWindText.Foreground = textBrush;
+            ChipWindArrow.Fill = primaryBrush;
+
+            UpdateDrawerTabVisuals();
+            RadarView.ApplyPalette(_currentPalette, IsRadarNightMode());
+
+            // Stile pulsante discreto hover
+            SolidColorBrush btnBg = _settings.ThemeMode == WidgetThemeMode.MaterialLight
+                ? MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0), 0.90)
+                : MaterialThemePalette.ToBrush(Color.FromRgb(0x0F, 0x17, 0x2A), 0.55);
+            BtnSettings.Background = btnBg;
+            BtnSettings.Foreground = textBrush;
+            BtnSettings.BorderBrush = borderBrush;
+
+            BtnHourlyLeft.Background = btnBg;
+            BtnHourlyLeft.Foreground = textBrush;
+            BtnHourlyLeft.BorderBrush = borderBrush;
+            BtnHourlyRight.Background = btnBg;
+            BtnHourlyRight.Foreground = textBrush;
+            BtnHourlyRight.BorderBrush = borderBrush;
+
+            HourlyScrollTrack.Background = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.70);
+            HourlyScrollThumb.Background = MaterialThemePalette.ToBrush(_currentPalette.Primary, 0.85);
+            UpdateHourlyScrollIndicators();
+
+            // Animazioni stile Samsung One UI (sfondo card e icone hero)
+            bool animateIcons = _settings.EnableWeatherAnimations;
+            CardWeatherIcon.IconKind = _previewWeatherOverride;
+            MinimalWeatherIcon.IconKind = _previewWeatherOverride;
+            CompactWeatherIcon.IconKind = _previewWeatherOverride;
+            CardWeatherIcon.Animate = animateIcons;
+            MinimalWeatherIcon.Animate = animateIcons;
+            CompactWeatherIcon.Animate = animateIcons;
+
+            WeatherIconKind sceneKind = _previewWeatherOverride
+                ?? (_currentWeather is not null
+                    ? WeatherService.MapWmoToIcon(_currentWeather.WeatherCode, _currentWeather.IsDay)
+                    : WeatherIconKind.ClearDay);
+            bool sceneEnabled = _settings.EnableWeatherAnimations &&
+                                _settings.LayoutStyle != WidgetLayoutStyle.PixelMinimalTransparent;
+            WeatherScene.Configure(sceneKind, sceneEnabled, _settings.ThemeMode == WidgetThemeMode.MaterialLight);
+            UpdateQuickCitySwitchHints();
+        }
+
+        private WeatherSnapshot? BuildAtmosphereSnapshotForTheme()
+        {
+            if (!_previewWeatherOverride.HasValue)
+            {
+                return _currentWeather;
+            }
+
+            return _previewWeatherOverride.Value switch
+            {
+                WeatherIconKind.ClearDay => new WeatherSnapshot { WeatherCode = 0, IsDay = true },
+                WeatherIconKind.ClearNight => new WeatherSnapshot { WeatherCode = 0, IsDay = false },
+                WeatherIconKind.PartlyCloudyDay => new WeatherSnapshot { WeatherCode = 2, IsDay = true },
+                WeatherIconKind.PartlyCloudyNight => new WeatherSnapshot { WeatherCode = 2, IsDay = false },
+                WeatherIconKind.Cloudy => new WeatherSnapshot { WeatherCode = 3, IsDay = true },
+                WeatherIconKind.Fog => new WeatherSnapshot { WeatherCode = 45, IsDay = true },
+                WeatherIconKind.Drizzle => new WeatherSnapshot { WeatherCode = 51, IsDay = true },
+                WeatherIconKind.Rain => new WeatherSnapshot { WeatherCode = 63, IsDay = true },
+                WeatherIconKind.Snow => new WeatherSnapshot { WeatherCode = 73, IsDay = true },
+                WeatherIconKind.Thunderstorm => new WeatherSnapshot { WeatherCode = 95, IsDay = true },
+                _ => _currentWeather
+            };
+        }
+
+        private void UpdateDrawerTabVisuals()
+        {
+            SolidColorBrush activeBg = MaterialThemePalette.ToBrush(_currentPalette.PrimaryContainer, 0.95);
+            SolidColorBrush activeFg = MaterialThemePalette.ToBrush(_currentPalette.Primary);
+            SolidColorBrush inactiveBg = MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.55);
+            SolidColorBrush inactiveFg = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
+
+            TabForecastPill.Background = _isRadarTabActive ? inactiveBg : activeBg;
+            TabForecastLabel.Foreground = _isRadarTabActive ? inactiveFg : activeFg;
+
+            TabRadarPill.Background = _isRadarTabActive ? activeBg : inactiveBg;
+            TabRadarLabel.Foreground = _isRadarTabActive ? activeFg : inactiveFg;
+        }
+
+        private void UpdateClockDisplay(bool force = false)
+        {
+            DateTime now = DateTime.Now;
+            string clockStr = _settings.Use24HourFormat
+                ? now.ToString("HH:mm", CultureInfo.InvariantCulture)
+                : now.ToString("hh:mm", CultureInfo.InvariantCulture);
+
+            string secondsStr = _settings.ShowSeconds ? now.ToString(":ss", CultureInfo.InvariantCulture) : string.Empty;
+            string amPmStr = _settings.Use24HourFormat ? string.Empty : now.ToString("tt", CultureInfo.InvariantCulture).ToUpperInvariant();
+            string clockKey = $"{clockStr}{secondsStr}|{amPmStr}";
+
+            if (force || !string.Equals(_lastDisplayedClock, clockKey, StringComparison.Ordinal))
+            {
+                bool minuteChanged = !force && !string.Equals(_lastDisplayedMinute, clockStr, StringComparison.Ordinal);
+                _lastDisplayedClock = clockKey;
+                _lastDisplayedMinute = clockStr;
+
+                CardClockText.Text = clockStr;
+                MinimalClockText.Text = clockStr;
+                CompactClockText.Text = clockStr;
+
+                if (minuteChanged && _settings.EnableWeatherAnimations)
+                {
+                    var fade = new DoubleAnimation(0.68, 1.0, TimeSpan.FromMilliseconds(240))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    CardClockText.BeginAnimation(OpacityProperty, fade);
+                    MinimalClockText.BeginAnimation(OpacityProperty, fade);
+                    CompactClockText.BeginAnimation(OpacityProperty, fade);
+                }
+
+                Visibility secVis = _settings.ShowSeconds ? Visibility.Visible : Visibility.Collapsed;
+                CardSecondsText.Text = secondsStr;
+                CardSecondsText.Visibility = secVis;
+                MinimalSecondsText.Text = secondsStr;
+                MinimalSecondsText.Visibility = secVis;
+                CompactSecondsText.Text = secondsStr;
+                CompactSecondsText.Visibility = secVis;
+
+                Visibility amPmVis = _settings.Use24HourFormat ? Visibility.Collapsed : Visibility.Visible;
+                CardAmPmText.Text = amPmStr;
+                CardAmPmText.Visibility = amPmVis;
+                MinimalAmPmText.Text = amPmStr;
+                MinimalAmPmText.Visibility = amPmVis;
+                CompactAmPmText.Text = amPmStr;
+                CompactAmPmText.Visibility = amPmVis;
+            }
+
+            string dateFull = CapitalizeFirst(now.ToString("dddd, d MMMM", ItalianCulture));
+            if (force || !string.Equals(_lastDisplayedDate, dateFull, StringComparison.Ordinal))
+            {
+                _lastDisplayedDate = dateFull;
+                CardDateText.Text = dateFull;
+                MinimalDateText.Text = dateFull;
+                CompactDateText.Text = CapitalizeFirst(now.ToString("ddd d MMM", ItalianCulture));
+            }
+        }
+
+        private void UpdateWeatherDisplay()
+        {
+            if (_currentWeather is null)
+            {
+                string fallbackCity = string.IsNullOrWhiteSpace(_settings.CityName) ? "Rilevamento..." : _settings.CityName;
+                CardPillTempText.Text = "--°";
+                CardPillRangeText.Text = string.Empty;
+                CardInsightText.Text = !string.IsNullOrWhiteSpace(_settings.QuickNote)
+                    ? $"📌 {_settings.QuickNote}"
+                    : "In attesa dei dati meteo...";
+                CardSummaryText.Text = fallbackCity;
+                MinimalWeatherText.Text = "--°";
+                MinimalSubText.Text = fallbackCity;
+                CompactTempText.Text = "--°";
+                CompactLocationText.Text = fallbackCity;
+                ChipSunText.Text = "-- / --";
+                ChipUvText.Text = "--";
+                ChipWindText.Text = "--";
+                CardHourlyItems.ItemsSource = null;
+                HourlySparklineCanvas.Children.Clear();
+                DailyForecastItems.ItemsSource = null;
+                return;
+            }
+
+            WeatherSnapshot w = _currentWeather;
+            TemperatureUnit unit = _settings.TempUnit;
+            string currentTemp = WeatherService.FormatTemp(w.TemperatureC, unit);
+            string apparentTemp = WeatherService.FormatTemp(w.ApparentTemperatureC, unit);
+            string maxTemp = WeatherService.FormatTemp(w.TodayMaxC, unit);
+            string minTemp = WeatherService.FormatTemp(w.TodayMinC, unit);
+            string condition = WeatherService.DescribeWmoCodeItalian(w.WeatherCode);
+            string city = string.IsNullOrWhiteSpace(w.CityName) ? _settings.CityName : w.CityName;
+            string cacheTag = w.IsFromCache ? " · Cache" : string.Empty;
+            string insight = !string.IsNullOrWhiteSpace(_settings.QuickNote)
+                ? $"📌 {_settings.QuickNote}"
+                : WeatherService.BuildAtAGlanceInsight(w, DateTime.Now);
+
+            // PixelCard
+            CardWeatherIcon.WeatherCode = w.WeatherCode;
+            CardWeatherIcon.IsDay = w.IsDay;
+            CardPillTempText.Text = currentTemp;
+            CardPillRangeText.Text = $"{maxTemp}/{minTemp}";
+            CardInsightText.Text = insight;
+            CardInsightText.Foreground = string.IsNullOrWhiteSpace(_settings.QuickNote)
+                ? MaterialThemePalette.ToBrush(_currentPalette.Primary)
+                : MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+            CardSummaryText.Text = $"{city} · {condition} · Percepiti {apparentTemp}{cacheTag}";
+
+            // Minimal
+            MinimalWeatherIcon.WeatherCode = w.WeatherCode;
+            MinimalWeatherIcon.IsDay = w.IsDay;
+            MinimalWeatherText.Text = $"{currentTemp} · {condition}";
+            MinimalSubText.Text = $"{city} · {insight}{cacheTag}";
+
+            // Compact
+            CompactWeatherIcon.WeatherCode = w.WeatherCode;
+            CompactWeatherIcon.IsDay = w.IsDay;
+            CompactTempText.Text = currentTemp;
+            CompactLocationText.Text = $"{city} · {condition}";
+
+            // Drawer header + chip dettagli
+            string modelTag = WeatherService.DescribeWeatherModelItalian(_settings.WeatherModel);
+            DrawerMetaText.Text = $"{city} · Modello {modelTag} · Percepiti {apparentTemp}{cacheTag}";
+
+            string sunriseStr = w.SunriseLocal?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";
+            string sunsetStr = w.SunsetLocal?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";
+            ChipSunText.Text = $"{sunriseStr} / {sunsetStr}";
+
+            string uvNum = w.CurrentUvIndex.ToString("0.#", CultureInfo.InvariantCulture);
+            ChipUvText.Text = $"{uvNum} · {WeatherService.DescribeUvLevelItalian(w.CurrentUvIndex)}";
+
+            string currentCardinal = WeatherService.DescribeWindDirectionCardinal(w.WindDirectionDeg);
+            ChipWindArrowRotate.Angle = (w.WindDirectionDeg + 180) % 360;
+            ChipWindBorder.ToolTip = $"Vento da {currentCardinal} ({w.WindDirectionDeg}°) · Umidità {w.RelativeHumidity}%";
+            ChipWindText.Text = $"{Math.Round(w.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture)} km/h · {w.RelativeHumidity}%";
+
+            SolidColorBrush primaryText = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+            SolidColorBrush mutedText = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
+            SolidColorBrush accentBrush = MaterialThemePalette.ToBrush(_currentPalette.Primary);
+
+            // Striscia oraria (prossime 24 ore scorribili + % pioggia con gocciolina + curva termica stile Samsung One UI 7)
+            var hourlyVms = new List<HourlyItemViewModel>(w.NextHours.Count);
+            foreach (HourlyForecastPoint hp in w.NextHours)
+            {
+                bool isMidnight = hp.LocalTime.Hour == 0;
+                bool showHourlyPrecip = hp.PrecipProbability >= 20;
+                string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode);
+                string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg);
+                string dateLabel = hp.LocalTime.Date > DateTime.Now.Date
+                    ? CapitalizeFirst(hp.LocalTime.ToString("ddd dd/MM", ItalianCulture)) + " · "
+                    : string.Empty;
+
+                hourlyVms.Add(new HourlyItemViewModel
+                {
+                    HourLabel = hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+                    PrecipLabel = showHourlyPrecip ? $"{hp.PrecipProbability}%" : string.Empty,
+                    PrecipVisibility = showHourlyPrecip ? Visibility.Visible : Visibility.Hidden,
+                    TooltipText = $"{dateLabel}{hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)} · {condText} · Pioggia {hp.PrecipProbability}% · Vento {Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture)} km/h da {hrCardinal}",
+                    WeatherCode = hp.WeatherCode,
+                    IsDay = hp.IsDay,
+                    HourBrush = isMidnight ? accentBrush : mutedText,
+                    PrecipBrush = accentBrush
+                });
+            }
+            CardHourlyItems.ItemsSource = hourlyVms;
+            RenderHourlySparkline(w.NextHours, unit, _currentPalette.Primary, _currentPalette.OnSurface, _currentPalette.Surface);
+            BeginAnimation(AnimatedHourlyOffsetProperty, null);
+            _isHourlyScrollAnimating = false;
+            _hourlyScrollTarget = 0.0;
+            HourlyScrollViewer.ScrollToHorizontalOffset(0);
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(UpdateHourlyScrollIndicators));
+
+            // Drawer 5 giorni (formato "Lun 23", gocciolina + % pioggia sempre visibile, triangolino direzione vento + km/h, min/max senza barra)
+            var dailyVms = new List<DailyItemViewModel>(w.Daily.Count);
+            for (int i = 0; i < w.Daily.Count; i++)
+            {
+                DailyForecastPoint dp = w.Daily[i];
+                string dayName = CapitalizeFirst(dp.Date.ToString("ddd d", ItalianCulture)).Replace(".", string.Empty);
+                string dayCardinal = WeatherService.DescribeWindDirectionCardinal(dp.WindDirectionDeg);
+                string windSpeedStr = $"{Math.Round(dp.WindSpeedMaxKmh).ToString("0", CultureInfo.InvariantCulture)} km/h";
+
+                dailyVms.Add(new DailyItemViewModel
+                {
+                    DayLabel = dayName,
+                    WeatherCode = dp.WeatherCode,
+                    ConditionLabel = WeatherService.DescribeWmoCodeItalian(dp.WeatherCode),
+                    PrecipLabel = $"{dp.PrecipProbabilityMax}%",
+                    PrecipVisibility = Visibility.Visible,
+                    WindLabel = windSpeedStr,
+                    WindArrowAngle = (dp.WindDirectionDeg + 180) % 360,
+                    WindTooltip = $"Vento da {dayCardinal} ({dp.WindDirectionDeg}°) · {windSpeedStr}",
+                    MinLabel = WeatherService.FormatTemp(dp.MinC, unit),
+                    MaxLabel = WeatherService.FormatTemp(dp.MaxC, unit),
+                    PrimaryTextBrush = primaryText,
+                    MutedBrush = mutedText,
+                    AccentBrush = dp.PrecipProbabilityMax >= 15 ? accentBrush : mutedText
+                });
+            }
+
+            DailyForecastItems.ItemsSource = dailyVms;
+            UpdateQuickCitySwitchHints();
+        }
+
+        private void RenderHourlySparkline(
+            List<HourlyForecastPoint> hours,
+            TemperatureUnit unit,
+            Color primaryColor,
+            Color textColor,
+            Color surfaceColor)
+        {
+            HourlySparklineCanvas.Children.Clear();
+            if (hours is null || hours.Count == 0)
+            {
+                HourlySparklineCanvas.Width = 0;
+                return;
+            }
+
+            const double colWidth = 60.0;
+            const double canvasHeight = 34.0;
+            const double topDotY = 16.5;
+            const double bottomDotY = 28.5;
+
+            int count = hours.Count;
+            double totalWidth = count * colWidth;
+            HourlySparklineCanvas.Width = totalWidth;
+
+            double minT = double.MaxValue;
+            double maxT = double.MinValue;
+            foreach (HourlyForecastPoint hp in hours)
+            {
+                if (hp.TemperatureC < minT) minT = hp.TemperatureC;
+                if (hp.TemperatureC > maxT) maxT = hp.TemperatureC;
+            }
+
+            double span = maxT - minT;
+            var points = new Point[count];
+            for (int i = 0; i < count; i++)
+            {
+                double cx = (i * colWidth) + (colWidth / 2.0);
+                double norm = span < 0.3 ? 0.5 : (hours[i].TemperatureC - minT) / span;
+                double cy = bottomDotY - (norm * (bottomDotY - topDotY));
+                points[i] = new Point(cx, cy);
+            }
+
+            if (count >= 2)
+            {
+                var lineFigure = new PathFigure { StartPoint = points[0], IsClosed = false };
+                var areaFigure = new PathFigure { StartPoint = new Point(points[0].X, canvasHeight), IsClosed = true };
+                areaFigure.Segments.Add(new LineSegment(points[0], isStroked: false));
+
+                for (int i = 0; i < count - 1; i++)
+                {
+                    Point p0 = points[i];
+                    Point p1 = points[i + 1];
+                    double dx = (p1.X - p0.X) * 0.40;
+                    var c1 = new Point(p0.X + dx, p0.Y);
+                    var c2 = new Point(p1.X - dx, p1.Y);
+
+                    lineFigure.Segments.Add(new BezierSegment(c1, c2, p1, isStroked: true));
+                    areaFigure.Segments.Add(new BezierSegment(c1, c2, p1, isStroked: false));
+                }
+
+                areaFigure.Segments.Add(new LineSegment(new Point(points[count - 1].X, canvasHeight), isStroked: false));
+
+                var areaGeometry = new PathGeometry(new[] { areaFigure });
+                areaGeometry.Freeze();
+
+                var areaBrush = new LinearGradientBrush(
+                    Color.FromArgb(64, primaryColor.R, primaryColor.G, primaryColor.B),
+                    Color.FromArgb(0, primaryColor.R, primaryColor.G, primaryColor.B),
+                    new Point(0.5, 0.0),
+                    new Point(0.5, 1.0));
+                areaBrush.Freeze();
+
+                HourlySparklineCanvas.Children.Add(new System.Windows.Shapes.Path
+                {
+                    Data = areaGeometry,
+                    Fill = areaBrush
+                });
+
+                var lineGeometry = new PathGeometry(new[] { lineFigure });
+                lineGeometry.Freeze();
+
+                HourlySparklineCanvas.Children.Add(new System.Windows.Shapes.Path
+                {
+                    Data = lineGeometry,
+                    Stroke = MaterialThemePalette.ToBrush(primaryColor, 0.92),
+                    StrokeThickness = 1.8,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round
+                });
+            }
+
+            SolidColorBrush dotFill = MaterialThemePalette.ToBrush(primaryColor);
+            SolidColorBrush dotStroke = MaterialThemePalette.ToBrush(surfaceColor);
+            SolidColorBrush labelBrush = MaterialThemePalette.ToBrush(textColor);
+            var fontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI");
+
+            for (int i = 0; i < count; i++)
+            {
+                Point pt = points[i];
+
+                var label = new TextBlock
+                {
+                    Text = WeatherService.FormatTemp(hours[i].TemperatureC, unit),
+                    Width = colWidth,
+                    TextAlignment = TextAlignment.Center,
+                    FontFamily = fontFamily,
+                    FontSize = 11.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = labelBrush
+                };
+                Canvas.SetLeft(label, i * colWidth);
+                Canvas.SetTop(label, pt.Y - 16.0);
+                HourlySparklineCanvas.Children.Add(label);
+
+                var dot = new Ellipse
+                {
+                    Width = 5.2,
+                    Height = 5.2,
+                    Fill = dotFill,
+                    Stroke = dotStroke,
+                    StrokeThickness = 1.2
+                };
+                Canvas.SetLeft(dot, pt.X - 2.6);
+                Canvas.SetTop(dot, pt.Y - 2.6);
+                HourlySparklineCanvas.Children.Add(dot);
+            }
+        }
+
+        private void CheckWallpaperChanges()
+        {
+            if (_settings.ThemeMode != WidgetThemeMode.DynamicWallpaper)
+            {
+                return;
+            }
+
+            string? path = _colorService.GetCurrentWallpaperPath();
+            DateTime writeUtc = DateTime.MinValue;
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            {
+                try
+                {
+                    writeUtc = File.GetLastWriteTimeUtc(path);
+                }
+                catch
+                {
+                    return;
+                }
+            }
+
+            if (!string.Equals(path, _lastWallpaperPath, StringComparison.OrdinalIgnoreCase) ||
+                writeUtc != _lastWallpaperWriteUtc)
+            {
+                _lastWallpaperPath = path;
+                _lastWallpaperWriteUtc = writeUtc;
+                ApplyThemeAndLayout();
+                UpdateWeatherDisplay();
+            }
+        }
+
+        private void CaptureWallpaperSignature()
+        {
+            _lastWallpaperPath = _colorService.GetCurrentWallpaperPath();
+            if (!string.IsNullOrWhiteSpace(_lastWallpaperPath) && File.Exists(_lastWallpaperPath))
+            {
+                try
+                {
+                    _lastWallpaperWriteUtc = File.GetLastWriteTimeUtc(_lastWallpaperPath);
+                }
+                catch
+                {
+                    _lastWallpaperWriteUtc = DateTime.MinValue;
+                }
+            }
+        }
+
+        private void WidgetWindow_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.ButtonState != MouseButtonState.Pressed || _settings.LockPosition)
+            {
+                return;
+            }
+
+            if (IsClickInsideInteractiveControl(e.OriginalSource as DependencyObject))
+            {
+                return;
+            }
+
+            try
+            {
+                DragMove();
+
+                // Snap morbido su griglia da 8px e clamp nei limiti dello schermo virtuale
+                double snappedLeft = Math.Round(Left / 8.0) * 8.0;
+                double snappedTop = Math.Round(Top / 8.0) * 8.0;
+
+                (double clampedLeft, double clampedTop) = SettingsService.ClampPosition(
+                    snappedLeft,
+                    snappedTop,
+                    ActualWidth,
+                    ActualHeight,
+                    SystemParameters.VirtualScreenLeft,
+                    SystemParameters.VirtualScreenTop,
+                    SystemParameters.VirtualScreenWidth,
+                    SystemParameters.VirtualScreenHeight);
+
+                Left = clampedLeft;
+                Top = clampedTop;
+                _settings.Left = Left;
+                _settings.Top = Top;
+                _settingsService.Save(_settings);
+            }
+            catch
+            {
+                // Ignora DragMove interrotto
+            }
+        }
+
+        private bool IsClickInsideInteractiveControl(DependencyObject? source)
+        {
+            DependencyObject? current = source;
+            while (current is not null)
+            {
+                if (current is Button ||
+                    ReferenceEquals(current, CardWeatherPill) ||
+                    ReferenceEquals(current, MinimalWeatherPill) ||
+                    ReferenceEquals(current, CompactWeatherPill) ||
+                    ReferenceEquals(current, CardHourlyContainer) ||
+                    ReferenceEquals(current, TabForecastPill) ||
+                    ReferenceEquals(current, TabRadarPill) ||
+                    ReferenceEquals(current, RadarView) ||
+                    (_settings.FavoriteLocations.Count > 1 &&
+                     (ReferenceEquals(current, CardSummaryText) ||
+                      ReferenceEquals(current, MinimalSubText) ||
+                      ReferenceEquals(current, CompactLocationText) ||
+                      ReferenceEquals(current, DrawerMetaText))))
+                {
+                    return true;
+                }
+                if (current is not Visual && current is not System.Windows.Media.Media3D.Visual3D)
+                {
+                    current = LogicalTreeHelper.GetParent(current);
+                    continue;
+                }
+                current = VisualTreeHelper.GetParent(current);
+            }
+            return false;
+        }
+
+        private void HourlyScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (HourlyScrollViewer.ScrollableWidth <= 0)
+            {
+                return;
+            }
+
+            double baseOffset = _isHourlyScrollAnimating ? _hourlyScrollTarget : HourlyScrollViewer.HorizontalOffset;
+            double step = e.Delta > 0 ? -60.0 : 60.0;
+            AnimateHourlyScrollTo(baseOffset + step);
+            e.Handled = true;
+        }
+
+        private void HourlyScrollViewer_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (HourlyScrollViewer.ScrollableWidth <= 0)
+            {
+                return;
+            }
+
+            _isHourlyPointerDown = true;
+            _isHourlyDragging = false;
+            _hourlyDragStart = e.GetPosition(HourlyScrollViewer);
+            _hourlyStartOffset = HourlyScrollViewer.HorizontalOffset;
+        }
+
+        private void HourlyScrollViewer_PreviewMouseMove(object sender, MouseEventArgs e)
+        {
+            if (!_isHourlyPointerDown || e.LeftButton != MouseButtonState.Pressed)
+            {
+                return;
+            }
+
+            Point currentPos = e.GetPosition(HourlyScrollViewer);
+            double dx = currentPos.X - _hourlyDragStart.X;
+
+            if (!_isHourlyDragging && Math.Abs(dx) > 4.0)
+            {
+                _isHourlyDragging = true;
+                BeginAnimation(AnimatedHourlyOffsetProperty, null);
+                _isHourlyScrollAnimating = false;
+                HourlyScrollViewer.CaptureMouse();
+            }
+
+            if (_isHourlyDragging)
+            {
+                double target = Math.Clamp(_hourlyStartOffset - dx, 0.0, HourlyScrollViewer.ScrollableWidth);
+                _hourlyScrollTarget = target;
+                HourlyScrollViewer.ScrollToHorizontalOffset(target);
+                e.Handled = true;
+            }
+        }
+
+        private void HourlyScrollViewer_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            EndHourlyDrag();
+        }
+
+        private void HourlyScrollViewer_LostMouseCapture(object sender, MouseEventArgs e)
+        {
+            EndHourlyDrag();
+        }
+
+        private void EndHourlyDrag()
+        {
+            _isHourlyPointerDown = false;
+            _isHourlyDragging = false;
+            if (HourlyScrollViewer.IsMouseCaptured)
+            {
+                HourlyScrollViewer.ReleaseMouseCapture();
+            }
+        }
+
+        private void BtnHourlyLeft_Click(object sender, RoutedEventArgs e)
+        {
+            double baseOffset = _isHourlyScrollAnimating ? _hourlyScrollTarget : HourlyScrollViewer.HorizontalOffset;
+            AnimateHourlyScrollTo(baseOffset - 180.0);
+        }
+
+        private void BtnHourlyRight_Click(object sender, RoutedEventArgs e)
+        {
+            double baseOffset = _isHourlyScrollAnimating ? _hourlyScrollTarget : HourlyScrollViewer.HorizontalOffset;
+            AnimateHourlyScrollTo(baseOffset + 180.0);
+        }
+
+        private void AnimateHourlyScrollTo(double targetOffset)
+        {
+            double maxOffset = HourlyScrollViewer.ScrollableWidth;
+            if (maxOffset <= 0.0)
+            {
+                return;
+            }
+
+            double clamped = Math.Clamp(targetOffset, 0.0, maxOffset);
+            _hourlyScrollTarget = clamped;
+            _isHourlyScrollAnimating = true;
+
+            var anim = new DoubleAnimation
+            {
+                From = HourlyScrollViewer.HorizontalOffset,
+                To = clamped,
+                Duration = TimeSpan.FromMilliseconds(220),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            Timeline.SetDesiredFrameRate(anim, 30);
+            anim.Completed += (_, _) => _isHourlyScrollAnimating = false;
+            BeginAnimation(AnimatedHourlyOffsetProperty, anim);
+        }
+
+        private void HourlyScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            UpdateHourlyScrollIndicators();
+        }
+
+        private void UpdateHourlyScrollIndicators()
+        {
+            double scrollable = HourlyScrollViewer.ScrollableWidth;
+            if (scrollable <= 1.0)
+            {
+                BtnHourlyLeft.Visibility = Visibility.Collapsed;
+                BtnHourlyRight.Visibility = Visibility.Collapsed;
+                HourlyScrollTrack.Visibility = Visibility.Collapsed;
+                HourlyScrollThumb.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            double offset = HourlyScrollViewer.HorizontalOffset;
+            BtnHourlyLeft.Visibility = offset > 1.0 ? Visibility.Visible : Visibility.Collapsed;
+            BtnHourlyRight.Visibility = offset < scrollable - 1.0 ? Visibility.Visible : Visibility.Collapsed;
+
+            HourlyScrollTrack.Visibility = Visibility.Visible;
+            HourlyScrollThumb.Visibility = Visibility.Visible;
+
+            double trackWidth = HourlyScrollTrack.ActualWidth > 10.0 ? HourlyScrollTrack.ActualWidth : 288.0;
+            double extent = Math.Max(1.0, HourlyScrollViewer.ExtentWidth);
+            double viewport = Math.Max(1.0, HourlyScrollViewer.ViewportWidth);
+
+            double thumbWidth = Math.Clamp(trackWidth * (viewport / extent), 28.0, trackWidth);
+            double ratio = Math.Clamp(offset / scrollable, 0.0, 1.0);
+            double leftMargin = (trackWidth - thumbWidth) * ratio;
+
+            HourlyScrollThumb.Width = thumbWidth;
+            HourlyScrollThumb.Margin = new Thickness(leftMargin, 0, 0, 0);
+        }
+
+        private void MainCard_MouseEnter(object sender, MouseEventArgs e)
+        {
+            var anim = new DoubleAnimation(0.92, TimeSpan.FromMilliseconds(160));
+            HoverActionsBar.BeginAnimation(OpacityProperty, anim);
+        }
+
+        private void MainCard_MouseLeave(object sender, MouseEventArgs e)
+        {
+            var anim = new DoubleAnimation(0.0, TimeSpan.FromMilliseconds(220));
+            HoverActionsBar.BeginAnimation(OpacityProperty, anim);
+        }
+
+        private void CardWeatherPill_MouseEnter(object sender, MouseEventArgs e)
+        {
+            var zoom = new DoubleAnimation(1.03, TimeSpan.FromMilliseconds(140))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            WeatherPillScale.BeginAnimation(ScaleTransform.ScaleXProperty, zoom);
+            WeatherPillScale.BeginAnimation(ScaleTransform.ScaleYProperty, zoom);
+        }
+
+        private void CardWeatherPill_MouseLeave(object sender, MouseEventArgs e)
+        {
+            var reset = new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(160))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            WeatherPillScale.BeginAnimation(ScaleTransform.ScaleXProperty, reset);
+            WeatherPillScale.BeginAnimation(ScaleTransform.ScaleYProperty, reset);
+        }
+
+        private void WeatherPill_Click(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            ToggleForecastDrawer();
+        }
+
+        private void ToggleForecastDrawer()
+        {
+            if (_isDrawerOpen)
+            {
+                CloseDrawer();
+            }
+            else
+            {
+                OpenDrawer(radarTab: false);
+            }
+        }
+
+        private void OpenDrawer(bool radarTab)
+        {
+            _isDrawerOpen = true;
+            ForecastDrawer.Opacity = 0.0;
+            DrawerSlideTransform.Y = -10.0;
+            ForecastDrawer.Visibility = Visibility.Visible;
+
+            var fade = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(200))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            var slide = new DoubleAnimation(-10.0, 0.0, TimeSpan.FromMilliseconds(240))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            ForecastDrawer.BeginAnimation(OpacityProperty, fade);
+            DrawerSlideTransform.BeginAnimation(TranslateTransform.YProperty, slide);
+
+            SelectDrawerTab(radarTab);
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(ClampAndPersistCurrentPosition));
+        }
+
+        private void CloseDrawer()
+        {
+            _isDrawerOpen = false;
+            ForecastDrawer.Visibility = Visibility.Collapsed;
+            RadarView.Deactivate();
+        }
+
+        private void SelectDrawerTab(bool radarTab)
+        {
+            _isRadarTabActive = radarTab;
+            ForecastTabPanel.Visibility = radarTab ? Visibility.Collapsed : Visibility.Visible;
+            RadarTabPanel.Visibility = radarTab ? Visibility.Visible : Visibility.Collapsed;
+            UpdateDrawerTabVisuals();
+
+            if (radarTab)
+            {
+                _ = ActivateRadarAsync();
+            }
+            else
+            {
+                RadarView.Deactivate();
+            }
+        }
+
+        private bool IsRadarNightMode()
+        {
+            if (_currentWeather is { SunriseLocal: DateTime sunrise, SunsetLocal: DateTime sunset })
+            {
+                DateTime now = DateTime.Now;
+                return now < sunrise || now >= sunset;
+            }
+
+            if (_currentWeather is not null)
+            {
+                return !_currentWeather.IsDay;
+            }
+
+            int hour = DateTime.Now.Hour;
+            return hour < 7 || hour >= 18;
+        }
+
+        private Task ActivateRadarAsync()
+        {
+            return RadarView.ActivateAsync(
+                _settings.Latitude,
+                _settings.Longitude,
+                _settings.RadarZoom,
+                IsRadarNightMode(),
+                _currentPalette,
+                _settings.CityName);
+        }
+
+        private void TabForecast_Click(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            SelectDrawerTab(radarTab: false);
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(ClampAndPersistCurrentPosition));
+        }
+
+        private void TabRadar_Click(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            SelectDrawerTab(radarTab: true);
+            Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(ClampAndPersistCurrentPosition));
+        }
+
+        private void BtnCloseDrawer_Click(object sender, RoutedEventArgs e)
+        {
+            CloseDrawer();
+        }
+
+        private void BtnSettings_Click(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, _openSettingsAction);
+        }
+
+        private void UpdateQuickCitySwitchHints()
+        {
+            SavedLocation? next = _settings.PeekNextFavorite();
+            Cursor? cursor = next is not null ? Cursors.Hand : null;
+            string? tip = next is not null ? $"Clicca per passare a {next.Name}" : null;
+
+            foreach (TextBlock target in new[] { CardSummaryText, MinimalSubText, CompactLocationText, DrawerMetaText })
+            {
+                target.Cursor = cursor;
+                target.ToolTip = tip;
+            }
+        }
+
+        private void LocationSummary_Click(object sender, MouseButtonEventArgs e)
+        {
+            SavedLocation? next = _settings.CycleNextFavorite();
+            if (next is null)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            SelectFavoriteLocation(next);
+        }
+
+        private void SelectFavoriteLocation(SavedLocation target)
+        {
+            _settings.AddOrSelectLocation(target.Name, target.Country, target.Latitude, target.Longitude);
+            _settingsService.Save(_settings);
+            UpdateQuickCitySwitchHints();
+            if (_isDrawerOpen && _isRadarTabActive)
+            {
+                _ = ActivateRadarAsync();
+            }
+            _ = RefreshWeatherAsync();
+        }
+
+        private void WidgetContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            MenuToggleDrawerItem.Header = _isDrawerOpen ? "Nascondi previsioni 7 giorni" : "Mostra previsioni 7 giorni";
+
+            MenuFavoriteLocations.Items.Clear();
+            if (_settings.FavoriteLocations.Count > 1)
+            {
+                MenuFavoriteLocations.Visibility = Visibility.Visible;
+                foreach (SavedLocation loc in _settings.FavoriteLocations)
+                {
+                    var item = new MenuItem
+                    {
+                        Header = loc.DisplayLabel,
+                        IsCheckable = true,
+                        IsChecked = loc.Matches(_settings.CityName, _settings.Latitude, _settings.Longitude)
+                    };
+                    item.Click += (_, _) => SelectFavoriteLocation(loc);
+                    MenuFavoriteLocations.Items.Add(item);
+                }
+            }
+            else
+            {
+                MenuFavoriteLocations.Visibility = Visibility.Collapsed;
+            }
+
+            MenuStylePixelCard.IsChecked = _settings.LayoutStyle == WidgetLayoutStyle.PixelCard;
+            MenuStyleMinimal.IsChecked = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
+            MenuStyleCompact.IsChecked = _settings.LayoutStyle == WidgetLayoutStyle.MaterialCompact;
+
+            MenuThemeDynamic.IsChecked = _settings.ThemeMode == WidgetThemeMode.DynamicWallpaper;
+            MenuThemePixelDark.IsChecked = _settings.ThemeMode == WidgetThemeMode.PixelDark;
+            MenuThemeGlassDark.IsChecked = _settings.ThemeMode == WidgetThemeMode.GlassDark;
+            MenuThemeMaterialLight.IsChecked = _settings.ThemeMode == WidgetThemeMode.MaterialLight;
+
+            MenuPinDesktop.IsChecked = _settings.PinMode == WindowPinMode.DesktopPinned;
+            MenuPinBottom.IsChecked = _settings.PinMode == WindowPinMode.BottomMost;
+            MenuPinTop.IsChecked = _settings.PinMode == WindowPinMode.AlwaysOnTop;
+
+            MenuLockPositionItem.IsChecked = _settings.LockPosition;
+            MenuAutostartItem.IsChecked = _autostartService.IsEnabled();
+        }
+
+        private void MenuRefreshWeather_Click(object sender, RoutedEventArgs e) => _ = RefreshWeatherAsync();
+        private void MenuToggleDrawer_Click(object sender, RoutedEventArgs e) => ToggleForecastDrawer();
+        private void MenuOpenRadar_Click(object sender, RoutedEventArgs e) => OpenDrawer(radarTab: true);
+
+        private void MenuStylePixelCard_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.LayoutStyle = WidgetLayoutStyle.PixelCard);
+        private void MenuStyleMinimal_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.LayoutStyle = WidgetLayoutStyle.PixelMinimalTransparent);
+        private void MenuStyleCompact_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.LayoutStyle = WidgetLayoutStyle.MaterialCompact);
+
+        private void MenuThemeDynamic_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.ThemeMode = WidgetThemeMode.DynamicWallpaper);
+        private void MenuThemePixelDark_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.ThemeMode = WidgetThemeMode.PixelDark);
+        private void MenuThemeGlassDark_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.ThemeMode = WidgetThemeMode.GlassDark);
+        private void MenuThemeMaterialLight_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.ThemeMode = WidgetThemeMode.MaterialLight);
+
+        private void MenuPinDesktop_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.PinMode = WindowPinMode.DesktopPinned);
+        private void MenuPinBottom_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.PinMode = WindowPinMode.BottomMost);
+        private void MenuPinTop_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.PinMode = WindowPinMode.AlwaysOnTop);
+
+        private void MenuLockPosition_Click(object sender, RoutedEventArgs e) => UpdateSetting(s => s.LockPosition = !s.LockPosition);
+        private void MenuAutostart_Click(object sender, RoutedEventArgs e) => _autostartService.SetEnabled(!_autostartService.IsEnabled());
+        private void MenuCenterWidget_Click(object sender, RoutedEventArgs e) => CenterOnPrimaryScreen();
+        private void MenuOpenSettings_Click(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, _openSettingsAction);
+        }
+        private void MenuExit_Click(object sender, RoutedEventArgs e) => _exitAction();
+
+        private void UpdateSetting(Action<WidgetSettings> mutator)
+        {
+            WidgetSettings next = _settings.Clone();
+            mutator(next);
+            ApplySettings(next, refreshWeather: false);
+        }
+
+        private static string CapitalizeFirst(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return string.Empty;
+            }
+
+            if (input.Length == 1)
+            {
+                return input.ToUpper(ItalianCulture);
+            }
+
+            return char.ToUpper(input[0], ItalianCulture) + input.Substring(1);
+        }
+
+        private sealed class HourlyItemViewModel
+        {
+            public string HourLabel { get; init; } = string.Empty;
+            public string PrecipLabel { get; init; } = string.Empty;
+            public Visibility PrecipVisibility { get; init; } = Visibility.Hidden;
+            public string TooltipText { get; init; } = string.Empty;
+            public int WeatherCode { get; init; }
+            public bool IsDay { get; init; }
+            public Brush HourBrush { get; init; } = Brushes.LightGray;
+            public Brush PrecipBrush { get; init; } = Brushes.LightSkyBlue;
+        }
+
+        private sealed class DailyItemViewModel
+        {
+            public string DayLabel { get; init; } = string.Empty;
+            public int WeatherCode { get; init; }
+            public string ConditionLabel { get; init; } = string.Empty;
+            public string PrecipLabel { get; init; } = string.Empty;
+            public Visibility PrecipVisibility { get; init; } = Visibility.Hidden;
+            public string WindLabel { get; init; } = string.Empty;
+            public double WindArrowAngle { get; init; }
+            public string WindTooltip { get; init; } = string.Empty;
+            public string MinLabel { get; init; } = string.Empty;
+            public string MaxLabel { get; init; } = string.Empty;
+            public Brush PrimaryTextBrush { get; init; } = Brushes.White;
+            public Brush MutedBrush { get; init; } = Brushes.LightGray;
+            public Brush AccentBrush { get; init; } = Brushes.LightSkyBlue;
+        }
+    }
+}

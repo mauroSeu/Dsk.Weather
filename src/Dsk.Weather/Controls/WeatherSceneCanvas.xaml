@@ -1,0 +1,9 @@
+<UserControl x:Class="Dsk.Weather.Controls.WeatherSceneCanvas"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsHitTestVisible="False"
+             ClipToBounds="True"
+             Unloaded="WeatherSceneCanvas_Unloaded"
+             SizeChanged="WeatherSceneCanvas_SizeChanged">
+    <Canvas x:Name="SceneCanvas" IsHitTestVisible="False" ClipToBounds="True" />
+</UserControl>

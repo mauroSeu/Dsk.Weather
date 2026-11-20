@@ -1,0 +1,40 @@
+name: Build & Test (.NET 8 Windows)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Build Solution (Release)
+        run: dotnet build Dsk.Weather.sln -c Release
+
+      - name: Run Unit Tests (16 checks)
+        run: dotnet tests/Dsk.Weather.Tests/bin/Release/net8.0-windows/Dsk.Weather.Tests.dll
+
+      - name: Publish Release Artifacts
+        run: dotnet publish src/Dsk.Weather/Dsk.Weather.csproj -c Release -r win-x64 --no-self-contained -o publish/Dsk.Weather-win-x64
+
+      - name: Clean Symbols Before Upload
+        run: Remove-Item publish/Dsk.Weather-win-x64/*.pdb -Force -ErrorAction SilentlyContinue
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dsk.Weather-win-x64
+          path: publish/Dsk.Weather-win-x64
+          if-no-files-found: error

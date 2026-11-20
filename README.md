@@ -1,0 +1,86 @@
+# Dsk.Weather — Desktop Weather Widget for Windows 11
+
+![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet)
+![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
+![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-16%2F16%20Passing-brightgreen?style=flat-square)
+
+Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
+
+---
+
+## Anteprima
+
+![Radar Live Material You](docs/screenshots/radar-live.jpg)
+
+---
+
+## Funzionalità Principali (`v1.2.0`)
+
+- **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
+- **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour).
+- **Animazioni Meteo (30 FPS):** scena animata leggera sullo sfondo della card (sole pulsante, stelle scintillanti e scia, nuvole in movimento, gocce oblique, neve, nebbia, lampi discreti) + icona meteo animata (disattivabile dalle Impostazioni).
+- **Riepilogo *"At a Glance"* deterministico:** analizza le prossime 12 ore per segnalare temporali, pioggia in arrivo, vento sostenuto, nebbia, UV alto o cali termici; supporta inoltre un **promemoria rapido** personalizzabile.
+- **Striscia Oraria 24 Ore Scorrevole + Curva Termica Bézier:** scorribile orizzontalmente (rotellina del mouse, trascinamento o frecce `‹` / `›`) con **Sparkline grafica Bézier** sfumata, valori orari e gocciolina `% pioggia` (`>= 20%`).
+- **Previsioni 7 Giorni:** tabella settimanale nel pannello espandibile con formato data `Lun 23`, gocciolina + `% pioggia`, triangolino direzionale del vento + `km/h`, e `Min° / Max°`.
+- **Radar Precipitazioni Live OpenStreetMap:** scheda dedicata **Radar Live** su mappe **OpenStreetMap** senza watermark, con passaggio **automatico alba/tramonto** tra modalità **diurna chiara** e **notturna scura** (più switch manuale `◐`), 4 livelli di zoom `Z5–Z8` anche tramite rotellina del mouse, anello di portata in `km`, onda sonar sul pin città e timeline 8 fotogrammi **RainViewer** con cross-fade (`0%` CPU a pannello chiuso).
+- **Posizioni Preferite & Cambio Rapido 1-Click:** salva più località preferite nelle Impostazioni e alterna istantaneamente tra di esse con **1 click** direttamente sulla riga località della card (o dal menu tasto destro).
+- **Finestra Impostazioni Material You:** pannello floating arrotondato sincronizzato live con la palette attiva del widget, completo di switch a pillola, slider custom e anteprima dal vivo delle scene meteo.
+- **Scelta Modello Meteo Italia + Ripresa Automatica:** selezione tra *Automatico (Best Match)*, *ECMWF IFS* e *DWD ICON* su **Open-Meteo**, salvataggio atomico con retry + debounce e ripresa automatica dopo standby o ripristino rete.
+
+---
+
+## Requisiti & Avvio Rapido (Windows 10 / 11)
+
+- **Requisito:** [Microsoft .NET 8 Windows Desktop Runtime (x64)](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+Per avviare il widget senza finestra console e senza falsi positivi euristici dell'antivirus sugli eseguibili auto-estraenti non firmati, usa il launcher incluso che esegue `Dsk.Weather.dll` tramite l'host ufficiale firmato Microsoft `dotnet.exe`:
+
+```text
+Avvia-DskWeather.vbs
+```
+
+Oppure da PowerShell (dalla root della repo):
+
+```powershell
+.\scripts\Launch-DskWeather.ps1
+```
+
+Per gestire l'avvio automatico con Windows:
+
+```powershell
+.\scripts\Toggle-Autostart.ps1 -Enable   # oppure -Disable / -Status
+```
+
+---
+
+## Compilazione, Test & Publish da Sorgente
+
+```powershell
+# Compilazione intera solution (App + Test)
+dotnet build Dsk.Weather.sln -c Release
+
+# Esecuzione suite test unitari deterministici (16/16 check)
+dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
+
+# Pubblicazione pacchetto finale in dist\
+dotnet publish src\Dsk.Weather\Dsk.Weather.csproj -c Release -r win-x64 --no-self-contained -o dist
+```
+
+---
+
+## Fonti Dati & Privacy
+
+L'app non raccoglie telemetria né richiede account o chiavi API. Impostazioni e cache meteo restano esclusivamente in locale (`%LocalAppData%\Dsk.Weather\`).
+
+- **Meteo & Geocoding:** [Open-Meteo](https://open-meteo.com/) (CC BY 4.0)
+- **Geolocalizzazione IP iniziale (solo al primo avvio):** [GeoJS](https://www.geojs.io/)
+- **Radar Precipitazioni:** [RainViewer](https://www.rainviewer.com/)
+- **Mappa Base Radar:** [OpenStreetMap](https://www.openstreetmap.org/copyright) (© OpenStreetMap contributors)
+
+---
+
+## Licenza
+
+Distribuito sotto licenza **MIT**. Vedi [LICENSE](LICENSE) per i dettagli.

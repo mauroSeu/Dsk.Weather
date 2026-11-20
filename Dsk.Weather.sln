@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F7F95FC0-A2DF-496F-AE09-D2953E30AFD1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsk.Weather", "src\Dsk.Weather\Dsk.Weather.csproj", "{A6D6D349-A67B-4D6E-B963-9ABF4DA79D2F}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{EBA59405-3B13-4818-847C-A1222B800195}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dsk.Weather.Tests", "tests\Dsk.Weather.Tests\Dsk.Weather.Tests.csproj", "{D4A4A139-E8B4-41D5-9C83-7B5FE8911A9E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A6D6D349-A67B-4D6E-B963-9ABF4DA79D2F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A6D6D349-A67B-4D6E-B963-9ABF4DA79D2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A6D6D349-A67B-4D6E-B963-9ABF4DA79D2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A6D6D349-A67B-4D6E-B963-9ABF4DA79D2F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D4A4A139-E8B4-41D5-9C83-7B5FE8911A9E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4A4A139-E8B4-41D5-9C83-7B5FE8911A9E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4A4A139-E8B4-41D5-9C83-7B5FE8911A9E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4A4A139-E8B4-41D5-9C83-7B5FE8911A9E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{A6D6D349-A67B-4D6E-B963-9ABF4DA79D2F} = {F7F95FC0-A2DF-496F-AE09-D2953E30AFD1}
+		{D4A4A139-E8B4-41D5-9C83-7B5FE8911A9E} = {EBA59405-3B13-4818-847C-A1222B800195}
+	EndGlobalSection
+EndGlobal
