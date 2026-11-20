@@ -770,6 +770,7 @@ namespace Dsk.Weather.Tests
                 window.ApplySettings(next, refreshWeather: false);
                 AssertEqual(System.Windows.Visibility.Visible, window.LayoutPixelCard.Visibility, "LayoutPixelCard visibile");
                 AssertEqual(System.Windows.Visibility.Visible, window.CardHourlyContainer.Visibility, "Striscia 24h visibile su Card Completa");
+                AssertEqual(0.0, window.HourlyScrollIndicator.Opacity, "Indicatore scorrimento invisibile a riposo");
                 AssertTrue(window.CardHourlyContainer.Effect is null, "Nessuna ombra testo su Card Completa");
                 AssertEqual(10.0, window.CardHourlyContainer.Margin.Top, "Margine superiore striscia su Card Completa");
 

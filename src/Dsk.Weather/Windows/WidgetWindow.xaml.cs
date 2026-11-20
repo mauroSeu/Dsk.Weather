@@ -505,21 +505,21 @@ namespace Dsk.Weather.Windows
             {
                 CardHourlyContainer.Effect = (System.Windows.Media.Effects.Effect)FindResource("MinimalTextShadow");
                 CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(Color.FromArgb(0x48, 0xFF, 0xFF, 0xFF));
-                CardHourlyContainer.Margin = new Thickness(18, 10, 18, 12);
+                CardHourlyContainer.Margin = new Thickness(18, 10, 18, 10);
                 CardHourlyContainer.Padding = new Thickness(0, 8, 0, 0);
             }
             else if (isCompact)
             {
                 CardHourlyContainer.Effect = null;
                 CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.35);
-                CardHourlyContainer.Margin = new Thickness(18, 8, 18, 10);
+                CardHourlyContainer.Margin = new Thickness(18, 8, 18, 8);
                 CardHourlyContainer.Padding = new Thickness(0, 6, 0, 0);
             }
             else
             {
                 CardHourlyContainer.Effect = null;
                 CardHourlyContainer.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.45);
-                CardHourlyContainer.Margin = new Thickness(18, 10, 18, 13);
+                CardHourlyContainer.Margin = new Thickness(18, 10, 18, 10);
                 CardHourlyContainer.Padding = new Thickness(0, 8, 0, 0);
             }
 
@@ -554,7 +554,7 @@ namespace Dsk.Weather.Windows
             UpdateDrawerTabVisuals();
             RadarView.ApplyPalette(_currentPalette, IsRadarNightMode());
 
-            // Stile pulsanti discreti hover e scorrimento orario
+            // Stile pulsante discreto hover e indicatore scorrimento orario
             SolidColorBrush btnBg = isMinimal
                 ? MaterialThemePalette.ToBrush(Color.FromArgb(0x99, 0x0F, 0x17, 0x2A))
                 : (_settings.ThemeMode == WidgetThemeMode.MaterialLight
@@ -567,18 +567,11 @@ namespace Dsk.Weather.Windows
             BtnSettings.Foreground = isMinimal ? minimalBtnFg : textBrush;
             BtnSettings.BorderBrush = isMinimal ? minimalBtnBorder : borderBrush;
 
-            BtnHourlyLeft.Background = btnBg;
-            BtnHourlyLeft.Foreground = isMinimal ? minimalBtnFg : textBrush;
-            BtnHourlyLeft.BorderBrush = isMinimal ? minimalBtnBorder : borderBrush;
-            BtnHourlyRight.Background = btnBg;
-            BtnHourlyRight.Foreground = isMinimal ? minimalBtnFg : textBrush;
-            BtnHourlyRight.BorderBrush = isMinimal ? minimalBtnBorder : borderBrush;
-
             HourlyScrollTrack.Background = isMinimal
-                ? MaterialThemePalette.ToBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF))
-                : MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.70);
+                ? MaterialThemePalette.ToBrush(Color.FromArgb(0x24, 0xFF, 0xFF, 0xFF))
+                : MaterialThemePalette.ToBrush(_currentPalette.SurfaceVariant, 0.35);
             HourlyScrollThumb.Background = isMinimal
-                ? MaterialThemePalette.ToBrush(Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF))
+                ? MaterialThemePalette.ToBrush(Color.FromArgb(0xD8, 0xFF, 0xFF, 0xFF))
                 : MaterialThemePalette.ToBrush(_currentPalette.Primary, 0.85);
             UpdateHourlyScrollIndicators();
 
@@ -1131,6 +1124,7 @@ namespace Dsk.Weather.Windows
                 return;
             }
 
+            SetHourlyIndicatorVisible(true);
             double baseOffset = _isHourlyScrollAnimating ? _hourlyScrollTarget : HourlyScrollViewer.HorizontalOffset;
             double step = e.Delta > 0 ? -60.0 : 60.0;
             AnimateHourlyScrollTo(baseOffset + step);
@@ -1163,6 +1157,7 @@ namespace Dsk.Weather.Windows
             if (!_isHourlyDragging && Math.Abs(dx) > 4.0)
             {
                 _isHourlyDragging = true;
+                SetHourlyIndicatorVisible(true);
                 BeginAnimation(AnimatedHourlyOffsetProperty, null);
                 _isHourlyScrollAnimating = false;
                 HourlyScrollViewer.CaptureMouse();
@@ -1195,18 +1190,33 @@ namespace Dsk.Weather.Windows
             {
                 HourlyScrollViewer.ReleaseMouseCapture();
             }
+            if (!CardHourlyContainer.IsMouseOver)
+            {
+                SetHourlyIndicatorVisible(false);
+            }
         }
 
-        private void BtnHourlyLeft_Click(object sender, RoutedEventArgs e)
+        private void CardHourlyContainer_MouseEnter(object sender, MouseEventArgs e)
         {
-            double baseOffset = _isHourlyScrollAnimating ? _hourlyScrollTarget : HourlyScrollViewer.HorizontalOffset;
-            AnimateHourlyScrollTo(baseOffset - 180.0);
+            SetHourlyIndicatorVisible(true);
         }
 
-        private void BtnHourlyRight_Click(object sender, RoutedEventArgs e)
+        private void CardHourlyContainer_MouseLeave(object sender, MouseEventArgs e)
         {
-            double baseOffset = _isHourlyScrollAnimating ? _hourlyScrollTarget : HourlyScrollViewer.HorizontalOffset;
-            AnimateHourlyScrollTo(baseOffset + 180.0);
+            if (!_isHourlyDragging)
+            {
+                SetHourlyIndicatorVisible(false);
+            }
+        }
+
+        private void SetHourlyIndicatorVisible(bool visible)
+        {
+            double targetOpacity = (visible && HourlyScrollViewer.ScrollableWidth > 1.0) ? 0.90 : 0.0;
+            var anim = new DoubleAnimation(targetOpacity, TimeSpan.FromMilliseconds(visible ? 150 : 240))
+            {
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            };
+            HourlyScrollIndicator.BeginAnimation(OpacityProperty, anim);
         }
 
         private void AnimateHourlyScrollTo(double targetOffset)
@@ -1243,21 +1253,17 @@ namespace Dsk.Weather.Windows
             double scrollable = HourlyScrollViewer.ScrollableWidth;
             if (scrollable <= 1.0)
             {
-                BtnHourlyLeft.Visibility = Visibility.Collapsed;
-                BtnHourlyRight.Visibility = Visibility.Collapsed;
                 HourlyScrollTrack.Visibility = Visibility.Collapsed;
                 HourlyScrollThumb.Visibility = Visibility.Collapsed;
+                SetHourlyIndicatorVisible(false);
                 return;
             }
 
             double offset = HourlyScrollViewer.HorizontalOffset;
-            BtnHourlyLeft.Visibility = offset > 1.0 ? Visibility.Visible : Visibility.Collapsed;
-            BtnHourlyRight.Visibility = offset < scrollable - 1.0 ? Visibility.Visible : Visibility.Collapsed;
-
             HourlyScrollTrack.Visibility = Visibility.Visible;
             HourlyScrollThumb.Visibility = Visibility.Visible;
 
-            double trackWidth = HourlyScrollTrack.ActualWidth > 10.0 ? HourlyScrollTrack.ActualWidth : 288.0;
+            double trackWidth = HourlyScrollTrack.ActualWidth > 10.0 ? HourlyScrollTrack.ActualWidth : 264.0;
             double extent = Math.Max(1.0, HourlyScrollViewer.ExtentWidth);
             double viewport = Math.Max(1.0, HourlyScrollViewer.ViewportWidth);
 
