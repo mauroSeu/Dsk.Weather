@@ -858,7 +858,7 @@
                                           Checked="SettingCheck_Changed"
                                           Unchecked="SettingCheck_Changed" />
 
-                                <Grid Margin="0,8,0,10">
+                                <Grid Margin="0,8,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
@@ -871,45 +871,6 @@
                                         <ComboBoxItem x:Name="CbiTempC" Content="Celsius (°C)" Tag="Celsius" />
                                         <ComboBoxItem x:Name="CbiTempF" Content="Fahrenheit (°F)" Tag="Fahrenheit" />
                                     </ComboBox>
-                                </Grid>
-
-                                <Grid Margin="0,0,0,10">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="WeatherModelLabel" Grid.Column="0" Text="Modello meteo" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
-                                    <ComboBox Grid.Column="1"
-                                              x:Name="WeatherModelCombo"
-                                              Style="{StaticResource DarkComboBoxStyle}"
-                                              SelectionChanged="SettingCombo_Changed">
-                                        <ComboBoxItem x:Name="CbiModelAuto" Content="Automatico (Best Match)" Tag="Auto" />
-                                        <ComboBoxItem x:Name="CbiModelEcmwf" Content="ECMWF IFS (Alta precisione)" Tag="EcmwfIfs" />
-                                        <ComboBoxItem x:Name="CbiModelIcon" Content="DWD ICON (Dettaglio locale)" Tag="DwdIcon" />
-                                    </ComboBox>
-                                </Grid>
-
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="130" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="QuickNoteLabel" Grid.Column="0" Text="Promemoria rapido" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
-                                    <TextBox Grid.Column="1"
-                                             x:Name="QuickNoteBox"
-                                             Style="{StaticResource DarkTextBoxStyle}"
-                                             MaxLength="90"
-                                             Margin="0,0,8,0"
-                                             ToolTip="Nota opzionale mostrata nella riga Riepilogo (lascia vuoto per l'avviso meteo smart)"
-                                             TextChanged="QuickNoteBox_TextChanged" />
-                                    <Button Grid.Column="2"
-                                            x:Name="BtnClearNote"
-                                            Content="Pulisci"
-                                            Style="{StaticResource SettingsButtonStyle}"
-                                            Padding="10,7"
-                                            FontSize="12"
-                                            Click="BtnClearNote_Click" />
                                 </Grid>
                             </StackPanel>
                         </Border>

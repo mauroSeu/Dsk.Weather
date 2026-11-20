@@ -28,7 +28,7 @@ namespace Dsk.Weather.Tests
                 ("OpenMeteoModelUrlAndExtraFields", TestOpenMeteoModelUrlAndExtraFields),
                 ("RadarMercatorTileMath", TestRadarMercatorTileMath),
                 ("DynamicAtmosphereBrushGeneration", TestDynamicAtmosphereBrush),
-                ("QuickNoteAndNewSettingsPersistence", TestQuickNoteAndNewSettings),
+                ("AdvancedSettingsAndLegacyJsonPersistence", TestAdvancedSettingsAndLegacyJson),
                 ("HourlyForecast24HoursParsing", TestHourlyForecast24Hours),
                 ("WeatherAnimationsSettingPersistence", TestWeatherAnimationsSetting),
                 ("WeatherAnimationsAllTenScenesStartCleanly", TestAllTenScenesAndIconsStartCleanly),
@@ -386,7 +386,7 @@ namespace Dsk.Weather.Tests
             AssertTrue(brush.IsFrozen, "Atmosfera brush deve essere frozen");
         }
 
-        private static void TestQuickNoteAndNewSettings()
+        private static void TestAdvancedSettingsAndLegacyJson()
         {
             string tempDir = Path.Combine(Path.GetTempPath(), "Dsk.WeatherTests_v11_" + Guid.NewGuid().ToString("N"));
             try
@@ -394,9 +394,7 @@ namespace Dsk.Weather.Tests
                 var svc = new SettingsService(tempDir);
                 var s = new WidgetSettings
                 {
-                    WeatherModel = WeatherModelPreference.EcmwfIfs,
                     EnableDynamicAtmosphere = false,
-                    QuickNote = "  Ricorda chiamata alle 15:00  ",
                     RadarZoom = 99 // clampato a 8
                 };
                 s.AddOrSelectLocation("Lemmer", "The Netherlands", 52.8491, 5.699);
@@ -405,12 +403,25 @@ namespace Dsk.Weather.Tests
                 svc.Save(s);
                 WidgetSettings loaded = svc.Load();
 
-                AssertEqual(WeatherModelPreference.EcmwfIfs, loaded.WeatherModel, "Modello meteo persistito");
                 AssertEqual(false, loaded.EnableDynamicAtmosphere, "Flag atmosfera persistito");
-                AssertEqual("Ricorda chiamata alle 15:00", loaded.QuickNote, "Nota rapida trimmata e persistita");
                 AssertEqual(8, loaded.RadarZoom, "RadarZoom clampato a 8");
                 AssertEqual(2, loaded.FavoriteLocations.Count, "Posizioni preferite persistite");
                 AssertEqual("Serramanna", loaded.CityName, "Ultima città selezionata attiva");
+
+                // Verifica tolleranza a settings.json legacy contenente campi rimossi (WeatherModel / QuickNote)
+                string legacyJson = """
+                {
+                  "WeatherModel": "EcmwfIfs",
+                  "QuickNote": "Vecchia nota",
+                  "CityName": "Roma",
+                  "EnableDynamicAtmosphere": true,
+                  "RadarZoom": 7
+                }
+                """;
+                File.WriteAllText(Path.Combine(tempDir, "settings.json"), legacyJson);
+                WidgetSettings legacyLoaded = svc.Load();
+                AssertEqual("Roma", legacyLoaded.CityName, "Settings legacy JSON caricato senza errori");
+                AssertEqual(true, legacyLoaded.EnableDynamicAtmosphere, "Flag atmosfera da legacy JSON");
             }
             finally
             {

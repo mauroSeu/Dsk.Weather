@@ -80,12 +80,10 @@ namespace Dsk.Weather.Models
         public bool ShowHourlyStrip { get; set; } = true;
         public bool LockPosition { get; set; } = false;
         public TemperatureUnit TempUnit { get; set; } = TemperatureUnit.Celsius;
-        public WeatherModelPreference WeatherModel { get; set; } = WeatherModelPreference.Auto;
         public bool EnableDynamicAtmosphere { get; set; } = true;
         public bool EnableWeatherAnimations { get; set; } = true;
         public bool EnableWeatherAlerts { get; set; } = true;
         public string Language { get; set; } = "it";
-        public string QuickNote { get; set; } = string.Empty;
         public int RadarZoom { get; set; } = 7;
         public string CityName { get; set; } = string.Empty;
         public string CountryName { get; set; } = string.Empty;
@@ -116,12 +114,6 @@ namespace Dsk.Weather.Models
             else
             {
                 Longitude = Math.Clamp(Longitude, -180.0, 180.0);
-            }
-
-            QuickNote = (QuickNote ?? string.Empty).Trim();
-            if (QuickNote.Length > 90)
-            {
-                QuickNote = QuickNote.Substring(0, 90);
             }
 
             Language = Dsk.Weather.Services.LocalizationService.NormalizeLanguage(Language);
@@ -289,12 +281,10 @@ namespace Dsk.Weather.Models
                 ShowHourlyStrip = ShowHourlyStrip,
                 LockPosition = LockPosition,
                 TempUnit = TempUnit,
-                WeatherModel = WeatherModel,
                 EnableDynamicAtmosphere = EnableDynamicAtmosphere,
                 EnableWeatherAnimations = EnableWeatherAnimations,
                 EnableWeatherAlerts = EnableWeatherAlerts,
                 Language = Language,
-                QuickNote = QuickNote,
                 RadarZoom = RadarZoom,
                 CityName = CityName,
                 CountryName = CountryName,

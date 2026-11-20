@@ -16,19 +16,19 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.3.6`)
+## Funzionalità Principali (`v1.3.7`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
 - **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour) sia alla Card che al pannello espandibile Previsioni / Radar.
 - **Animazioni Meteo (30 FPS):** scena animata leggera sullo sfondo della card (sole pulsante, stelle scintillanti e scia, nuvole in movimento, gocce oblique, neve, nebbia, lampi discreti) + icona meteo animata (disattivabile dalle Impostazioni).
-- **Riepilogo *"At a Glance"* deterministico:** analizza le prossime 12 ore per segnalare temporali, pioggia in arrivo, vento sostenuto, nebbia, UV alto o cali termici; supporta inoltre un **promemoria rapido** personalizzabile.
+- **Riepilogo *"At a Glance"* deterministico:** analizza le prossime 12 ore per segnalare temporali, pioggia in arrivo, vento sostenuto, nebbia, UV alto o cali termici.
 - **Allerte Meteo & Raffiche (bordo Giallo / Rosso):** badge a vetro semitrasparente accanto all'orologio basato sui dati reali e sulle raffiche (`wind_gusts_10m`) di Open-Meteo (Temporale/Grandine, Pioggia gelata, Raffiche forti, Nubifragio, Neve, Rischio gelo, Nebbia, UV elevato, Caldo intenso); **invisibile quando il tempo è neutro**, cliccabile per aprire il Radar Live.
 - **Striscia Oraria 24 Ore Scorrevole + Curva Termica Bézier + Tramonto/Alba (Tutti i Layout):** disponibile su tutti e 3 i layout (*Card Completa*, *Minimal Trasparente* con testo e curva ad alto contrasto ed effetto ombra su desktop trasparente, *Material Compatto* con spaziatura raccolta), scorribile fluidamente con rotellina del mouse o trascinamento e con barra di scorrimento discreta visibile solo al passaggio del mouse, completa di **Sparkline grafica Bézier** sfumata, valori orari, gocciolina `% pioggia` (`>= 20%`) e **slot dedicati per Tramonto e Alba** all'orario esatto.
 - **Previsioni 7 Giorni:** tabella settimanale nel pannello espandibile con formato data `Lun 23`, gocciolina + `% pioggia`, triangolino direzionale del vento + `km/h`, e `Min° / Max°`.
 - **Radar Precipitazioni Live OpenStreetMap:** scheda dedicata **Radar Live** su mappe **OpenStreetMap** senza watermark, con passaggio **automatico alba/tramonto** tra modalità **diurna chiara** e **notturna scura** (più switch manuale `◐`), 4 livelli di zoom `Z5–Z8` anche tramite rotellina del mouse, anello di portata in `km`, onda sonar sul pin città e timeline 8 fotogrammi **RainViewer** con cross-fade (`0%` CPU a pannello chiuso).
 - **Posizioni Preferite & Cambio Rapido 1-Click:** salva più località preferite nelle Impostazioni e alterna istantaneamente tra di esse con **1 click** direttamente sulla riga località della card (o dal menu tasto destro).
 - **Finestra Impostazioni Material You & Multilingua (6 Lingue):** pannello floating arrotondato sincronizzato live con la palette attiva del widget, completo di switch a pillola, slider custom e **selettore lingua live** (*Italiano, English, Deutsch, Nederlands, Español, Português*).
-- **Scelta Modello Meteo Italia + Ripresa Automatica:** selezione tra *Automatico (Best Match)*, *ECMWF IFS* e *DWD ICON* su **Open-Meteo**, salvataggio atomico con retry + debounce e ripresa automatica dopo standby o ripristino rete.
+- **Motore Meteo Ad Alta Precisione + Ripresa Automatica:** utilizza automaticamente il profilo ad alta precisione `best_match` su **Open-Meteo** (modelli locali ad alta risoluzione fino a 2 km + ECMWF IFS con indice UV e raffiche completi), salvataggio atomico con retry + debounce e ripresa automatica dopo standby o ripristino rete.
 
 ---
 

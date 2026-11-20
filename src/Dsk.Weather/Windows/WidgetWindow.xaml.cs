@@ -313,7 +313,7 @@ namespace Dsk.Weather.Windows
                     _settings.Latitude,
                     _settings.Longitude,
                     city,
-                    _settings.WeatherModel,
+                    WeatherModelPreference.Auto,
                     ct);
 
                 if (ct.IsCancellationRequested || requestVersion != _weatherRequestVersion)
@@ -490,7 +490,7 @@ namespace Dsk.Weather.Windows
             CardClockText.Foreground = textBrush;
             CardSecondsText.Foreground = mutedBrush;
             CardAmPmText.Foreground = primaryBrush;
-            CardInsightText.Foreground = string.IsNullOrWhiteSpace(_settings.QuickNote) ? primaryBrush : textBrush;
+            CardInsightText.Foreground = primaryBrush;
             CardSummaryText.Foreground = mutedBrush;
 
             // Adatta stile e spaziatura della striscia 24h al layout attivo
@@ -702,9 +702,7 @@ namespace Dsk.Weather.Windows
                     : _settings.CityName;
                 CardPillTempText.Text = "--°";
                 CardPillRangeText.Text = string.Empty;
-                CardInsightText.Text = !string.IsNullOrWhiteSpace(_settings.QuickNote)
-                    ? $"📌 {_settings.QuickNote}"
-                    : LocalizationService.T(lang, "waiting_weather");
+                CardInsightText.Text = LocalizationService.T(lang, "waiting_weather");
                 CardSummaryText.Text = fallbackCity;
                 MinimalWeatherText.Text = "--°";
                 MinimalSubText.Text = fallbackCity;
@@ -730,9 +728,7 @@ namespace Dsk.Weather.Windows
             string city = string.IsNullOrWhiteSpace(w.CityName) ? _settings.CityName : w.CityName;
             string cacheTag = w.IsFromCache ? LocalizationService.T(lang, "cache_tag") : string.Empty;
             string feelsLike = LocalizationService.Format(lang, "feels_like", apparentTemp);
-            string insight = !string.IsNullOrWhiteSpace(_settings.QuickNote)
-                ? $"📌 {_settings.QuickNote}"
-                : WeatherService.BuildAtAGlanceInsight(w, DateTime.Now, lang);
+            string insight = WeatherService.BuildAtAGlanceInsight(w, DateTime.Now, lang);
 
             // Card Completa
             CardWeatherIcon.WeatherCode = w.WeatherCode;
@@ -740,9 +736,7 @@ namespace Dsk.Weather.Windows
             CardPillTempText.Text = currentTemp;
             CardPillRangeText.Text = $"{maxTemp}/{minTemp}";
             CardInsightText.Text = insight;
-            CardInsightText.Foreground = string.IsNullOrWhiteSpace(_settings.QuickNote)
-                ? MaterialThemePalette.ToBrush(_currentPalette.Primary)
-                : MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+            CardInsightText.Foreground = MaterialThemePalette.ToBrush(_currentPalette.Primary);
             CardSummaryText.Text = $"{city} · {condition} · {feelsLike}{cacheTag}";
 
             // Minimal
@@ -759,9 +753,7 @@ namespace Dsk.Weather.Windows
             CompactLocationText.Text = $"{city} · {condition}";
 
             // Drawer header + chip dettagli
-            string modelTag = WeatherService.DescribeWeatherModelItalian(_settings.WeatherModel, lang);
-            string modelWord = LocalizationService.T(lang, "model_word");
-            DrawerMetaText.Text = $"{city} · {modelWord} {modelTag} · {feelsLike}{cacheTag}";
+            DrawerMetaText.Text = $"{city} · {condition} · {feelsLike}{cacheTag}";
 
             string sunriseStr = w.SunriseLocal?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";
             string sunsetStr = w.SunsetLocal?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";

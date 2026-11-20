@@ -89,7 +89,6 @@ namespace Dsk.Weather.Windows
                 SelectComboByTag(ThemeCombo, _draft.ThemeMode.ToString());
                 SelectComboByTag(LanguageCombo, _draft.Language);
                 SelectComboByTag(UnitCombo, _draft.TempUnit.ToString());
-                SelectComboByTag(WeatherModelCombo, _draft.WeatherModel.ToString());
                 SelectComboByTag(PinModeCombo, _draft.PinMode.ToString());
 
                 ScaleSlider.Value = _draft.Scale;
@@ -104,7 +103,6 @@ namespace Dsk.Weather.Windows
                 ShowSecondsCheck.IsChecked = _draft.ShowSeconds;
                 ShowHourlyCheck.IsChecked = _draft.ShowHourlyStrip;
                 EnableWeatherAlertsCheck.IsChecked = _draft.EnableWeatherAlerts;
-                QuickNoteBox.Text = _draft.QuickNote;
                 LockPositionCheck.IsChecked = _draft.LockPosition;
                 AutostartCheck.IsChecked = _autostartService.IsEnabled();
                 DefaultStyleCheck.IsChecked = _draft.IsDefaultStyle();
@@ -269,7 +267,6 @@ namespace Dsk.Weather.Windows
                 _draft.Language = LocalizationService.NormalizeLanguage(langTag);
             }
             _draft.TempUnit = ParseSelectedTag(UnitCombo, _draft.TempUnit);
-            _draft.WeatherModel = ParseSelectedTag(WeatherModelCombo, _draft.WeatherModel);
             _draft.PinMode = ParseSelectedTag(PinModeCombo, _draft.PinMode);
 
             ApplyLanguage(_draft.Language);
@@ -316,22 +313,6 @@ namespace Dsk.Weather.Windows
 
             SyncDefaultStyleSwitch();
             _onSettingsChanged(_draft);
-        }
-
-        private void QuickNoteBox_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (_isInitializing || _draft is null)
-            {
-                return;
-            }
-
-            _draft.QuickNote = QuickNoteBox.Text.Trim();
-            _onSettingsChanged(_draft);
-        }
-
-        private void BtnClearNote_Click(object sender, RoutedEventArgs e)
-        {
-            QuickNoteBox.Text = string.Empty;
         }
 
         private void AutostartCheck_Changed(object sender, RoutedEventArgs e)
@@ -575,12 +556,6 @@ namespace Dsk.Weather.Windows
             TempUnitLabel.Text = LocalizationService.T(lang, "set_temp_unit");
             CbiTempC.Content = LocalizationService.T(lang, "set_temp_c");
             CbiTempF.Content = LocalizationService.T(lang, "set_temp_f");
-            WeatherModelLabel.Text = LocalizationService.T(lang, "set_weather_model");
-            CbiModelAuto.Content = LocalizationService.T(lang, "set_model_auto");
-            CbiModelEcmwf.Content = LocalizationService.T(lang, "set_model_ecmwf");
-            CbiModelIcon.Content = LocalizationService.T(lang, "set_model_icon");
-            QuickNoteLabel.Text = LocalizationService.T(lang, "set_quick_note");
-            BtnClearNote.Content = LocalizationService.T(lang, "set_btn_clear");
 
             SecWinTitle.Text = LocalizationService.T(lang, "set_sec_win");
             PinModeLabel.Text = LocalizationService.T(lang, "set_pin_mode");

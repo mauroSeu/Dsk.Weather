@@ -170,7 +170,6 @@ namespace Dsk.Weather
                 updatedSettings =>
                 {
                     bool shouldRefreshWeather =
-                        updatedSettings.WeatherModel != _settings.WeatherModel ||
                         Math.Abs(updatedSettings.Latitude - _settings.Latitude) > 0.0001 ||
                         Math.Abs(updatedSettings.Longitude - _settings.Longitude) > 0.0001 ||
                         !string.Equals(updatedSettings.CityName, _settings.CityName, StringComparison.Ordinal);
