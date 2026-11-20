@@ -93,6 +93,7 @@ namespace Dsk.Weather.Models
         public double Latitude { get; set; } = 41.9028;
         public double Longitude { get; set; } = 12.4964;
         public bool LocationInitialized { get; set; } = false;
+        public bool AutoDetectLocation { get; set; } = false;
         public List<SavedLocation> FavoriteLocations { get; set; } = new List<SavedLocation>();
 
         public void Normalize()
@@ -297,6 +298,7 @@ namespace Dsk.Weather.Models
                 Latitude = Latitude,
                 Longitude = Longitude,
                 LocationInitialized = LocationInitialized,
+                AutoDetectLocation = AutoDetectLocation,
                 FavoriteLocations = clonedFavorites
             };
         }

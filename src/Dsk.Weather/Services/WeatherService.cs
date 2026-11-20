@@ -758,14 +758,98 @@ namespace Dsk.Weather.Services
             }
         }
 
-        public async Task<GeoLocationResult> DetectLocationByIpAsync(CancellationToken ct = default)
+        public async Task<GeoLocationResult?> TryDetectLocationByIpAsync(string lang = "it", CancellationToken ct = default)
         {
+            GeoLocationResult? detected = null;
+
             try
             {
                 using var response = await SharedHttpClient.GetAsync("https://get.geojs.io/v1/ip/geo.json", ct).ConfigureAwait(false);
-                response.EnsureSuccessStatusCode();
-                string json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                if (response.IsSuccessStatusCode)
+                {
+                    string json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    detected = ParseGeoJsJson(json);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                // Passa al provider di fallback HTTPS
+            }
 
+            if (detected is null)
+            {
+                try
+                {
+                    using var fallbackResp = await SharedHttpClient.GetAsync("https://ipwho.is/", ct).ConfigureAwait(false);
+                    if (fallbackResp.IsSuccessStatusCode)
+                    {
+                        string json = await fallbackResp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                        detected = ParseIpWhoIsJson(json);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            if (detected is null)
+            {
+                return null;
+            }
+
+            GeoLocationResult? localized = await TryLocalizeLocationNameAsync(detected.Latitude, detected.Longitude, lang, ct).ConfigureAwait(false);
+            if (localized is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(localized.Country))
+                {
+                    detected.Country = localized.Country;
+                }
+
+                if (string.IsNullOrWhiteSpace(detected.Name) && !string.IsNullOrWhiteSpace(localized.Name))
+                {
+                    detected.Name = localized.Name;
+                }
+            }
+
+            return detected;
+        }
+
+        public async Task<GeoLocationResult> DetectLocationByIpAsync(string lang = "it", CancellationToken ct = default)
+        {
+            GeoLocationResult? detected = await TryDetectLocationByIpAsync(lang, ct).ConfigureAwait(false);
+            if (detected is not null)
+            {
+                return detected;
+            }
+
+            return new GeoLocationResult
+            {
+                Name = "Roma",
+                Admin1 = "Lazio",
+                Country = "Italia",
+                Latitude = 41.9028,
+                Longitude = 12.4964
+            };
+        }
+
+        internal static GeoLocationResult? ParseGeoJsJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            try
+            {
                 using JsonDocument doc = JsonDocument.Parse(json);
                 JsonElement root = doc.RootElement;
 
@@ -773,24 +857,132 @@ namespace Dsk.Weather.Services
                 string country = TryGetString(root, "country");
                 string region = TryGetString(root, "region");
 
-                double lat = TryGetFlexibleDouble(root, "latitude", 41.9028);
-                double lon = TryGetFlexibleDouble(root, "longitude", 12.4964);
+                double lat = TryGetFlexibleDouble(root, "latitude", double.NaN);
+                double lon = TryGetFlexibleDouble(root, "longitude", double.NaN);
+                if (!double.IsFinite(lat) || !double.IsFinite(lon) || Math.Abs(lat) > 90.0 || Math.Abs(lon) > 180.0)
+                {
+                    return null;
+                }
 
                 if (string.IsNullOrWhiteSpace(city))
                 {
-                    city = "Roma";
+                    city = region;
                 }
 
-                if (string.IsNullOrWhiteSpace(country))
+                if (string.IsNullOrWhiteSpace(city))
                 {
-                    country = "Italia";
+                    return null;
                 }
 
                 return new GeoLocationResult
                 {
-                    Name = city,
-                    Admin1 = region,
-                    Country = country,
+                    Name = city.Trim(),
+                    Admin1 = region.Trim(),
+                    Country = country.Trim(),
+                    Latitude = lat,
+                    Longitude = lon
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        internal static GeoLocationResult? ParseIpWhoIsJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return null;
+            }
+
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(json);
+                JsonElement root = doc.RootElement;
+                if (root.TryGetProperty("success", out JsonElement okEl) &&
+                    okEl.ValueKind == JsonValueKind.False)
+                {
+                    return null;
+                }
+
+                string city = TryGetString(root, "city");
+                string country = TryGetString(root, "country");
+                string region = TryGetString(root, "region");
+                double lat = TryGetFlexibleDouble(root, "latitude", double.NaN);
+                double lon = TryGetFlexibleDouble(root, "longitude", double.NaN);
+                if (!double.IsFinite(lat) || !double.IsFinite(lon) || Math.Abs(lat) > 90.0 || Math.Abs(lon) > 180.0)
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(city))
+                {
+                    city = region;
+                }
+
+                if (string.IsNullOrWhiteSpace(city))
+                {
+                    return null;
+                }
+
+                return new GeoLocationResult
+                {
+                    Name = city.Trim(),
+                    Admin1 = region.Trim(),
+                    Country = country.Trim(),
+                    Latitude = lat,
+                    Longitude = lon
+                };
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static async Task<GeoLocationResult?> TryLocalizeLocationNameAsync(
+            double lat,
+            double lon,
+            string lang,
+            CancellationToken ct)
+        {
+            try
+            {
+                string normalizedLang = LocalizationService.NormalizeLanguage(lang);
+                string url = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat={0:0.####}&lon={1:0.####}&zoom=10&addressdetails=1&accept-language={2}",
+                    lat,
+                    lon,
+                    normalizedLang);
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                req.Headers.AcceptLanguage.ParseAdd(normalizedLang);
+
+                using var resp = await SharedHttpClient.SendAsync(req, ct).ConfigureAwait(false);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    return null;
+                }
+
+                string json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                using JsonDocument doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("address", out JsonElement addr) ||
+                    addr.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+
+                string country = TryGetString(addr, "country");
+                string city = TryGetString(addr, "city");
+                if (string.IsNullOrWhiteSpace(city)) city = TryGetString(addr, "town");
+                if (string.IsNullOrWhiteSpace(city)) city = TryGetString(addr, "village");
+                if (string.IsNullOrWhiteSpace(city)) city = TryGetString(addr, "municipality");
+
+                return new GeoLocationResult
+                {
+                    Name = city.Trim(),
+                    Country = country.Trim(),
                     Latitude = lat,
                     Longitude = lon
                 };
@@ -801,14 +993,7 @@ namespace Dsk.Weather.Services
             }
             catch
             {
-                return new GeoLocationResult
-                {
-                    Name = "Roma",
-                    Admin1 = "Lazio",
-                    Country = "Italia",
-                    Latitude = 41.9028,
-                    Longitude = 12.4964
-                };
+                return null;
             }
         }
 

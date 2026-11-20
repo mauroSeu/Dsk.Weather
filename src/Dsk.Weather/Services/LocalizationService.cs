@@ -365,6 +365,11 @@ namespace Dsk.Weather.Services
                     ["set_city_added"] = "Aggiunta e impostata: {0}.",
                     ["set_ip_detecting"] = "Rilevamento posizione da IP in corso...",
                     ["set_ip_detected"] = "Posizione rilevata: {0}.",
+                    ["set_auto_location"] = "Posizione automatica (rete / IP)",
+                    ["set_loc_mode_auto"] = "Auto",
+                    ["set_loc_mode_manual"] = "Manuale",
+                    ["set_ip_already_current"] = "Sei già nella posizione rilevata: {0}.",
+                    ["set_ip_failed"] = "Impossibile rilevare la posizione. Controlla la connessione.",
                     ["set_search_error"] = "Errore di connessione durante la ricerca."
                 },
 
@@ -600,6 +605,11 @@ namespace Dsk.Weather.Services
                     ["set_city_added"] = "Added and active: {0}.",
                     ["set_ip_detecting"] = "Detecting location from IP...",
                     ["set_ip_detected"] = "Location detected: {0}.",
+                    ["set_auto_location"] = "Automatic location (network / IP)",
+                    ["set_loc_mode_auto"] = "Auto",
+                    ["set_loc_mode_manual"] = "Manual",
+                    ["set_ip_already_current"] = "Already at detected location: {0}.",
+                    ["set_ip_failed"] = "Unable to detect location. Check your connection.",
                     ["set_search_error"] = "Search error: check your internet connection."
                 },
 
@@ -835,6 +845,11 @@ namespace Dsk.Weather.Services
                     ["set_city_added"] = "Hinzugefügt und aktiv: {0}.",
                     ["set_ip_detecting"] = "Standorterkennung per IP...",
                     ["set_ip_detected"] = "Standort erkannt: {0}.",
+                    ["set_auto_location"] = "Automatischer Standort (Netzwerk / IP)",
+                    ["set_loc_mode_auto"] = "Auto",
+                    ["set_loc_mode_manual"] = "Manuell",
+                    ["set_ip_already_current"] = "Bereits am erkannten Standort: {0}.",
+                    ["set_ip_failed"] = "Standort konnte nicht erkannt werden. Verbindung prüfen.",
                     ["set_search_error"] = "Suchfehler: Internetverbindung prüfen."
                 },
 
@@ -1070,6 +1085,11 @@ namespace Dsk.Weather.Services
                     ["set_city_added"] = "Toegevoegd en actief: {0}.",
                     ["set_ip_detecting"] = "Locatie detecteren via IP...",
                     ["set_ip_detected"] = "Locatie gedetecteerd: {0}.",
+                    ["set_auto_location"] = "Automatische locatie (netwerk / IP)",
+                    ["set_loc_mode_auto"] = "Auto",
+                    ["set_loc_mode_manual"] = "Handmatig",
+                    ["set_ip_already_current"] = "Al op de gedetecteerde locatie: {0}.",
+                    ["set_ip_failed"] = "Locatie detecteren mislukt. Controleer je verbinding.",
                     ["set_search_error"] = "Zoekfout: controleer je internetverbinding."
                 },
 
@@ -1305,6 +1325,11 @@ namespace Dsk.Weather.Services
                     ["set_city_added"] = "Añadida y activa: {0}.",
                     ["set_ip_detecting"] = "Detectando ubicación por IP...",
                     ["set_ip_detected"] = "Ubicación detectada: {0}.",
+                    ["set_auto_location"] = "Ubicación automática (red / IP)",
+                    ["set_loc_mode_auto"] = "Auto",
+                    ["set_loc_mode_manual"] = "Manual",
+                    ["set_ip_already_current"] = "Ya estás en la ubicación detectada: {0}.",
+                    ["set_ip_failed"] = "No se pudo detectar la ubicación. Comprueba tu conexión.",
                     ["set_search_error"] = "Error de búsqueda: verifica tu conexión."
                 },
 
@@ -1540,6 +1565,11 @@ namespace Dsk.Weather.Services
                     ["set_city_added"] = "Adicionada e ativa: {0}.",
                     ["set_ip_detecting"] = "A detetar localização por IP...",
                     ["set_ip_detected"] = "Localização detetada: {0}.",
+                    ["set_auto_location"] = "Localização automática (rede / IP)",
+                    ["set_loc_mode_auto"] = "Auto",
+                    ["set_loc_mode_manual"] = "Manual",
+                    ["set_ip_already_current"] = "Já estás na localização detetada: {0}.",
+                    ["set_ip_failed"] = "Não foi possível detetar a localização. Verifica a ligação.",
                     ["set_search_error"] = "Erro na pesquisa: verifique a ligação à internet."
                 }
             };

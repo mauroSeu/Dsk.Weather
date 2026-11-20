@@ -75,6 +75,7 @@ namespace Dsk.Weather.Windows
             Resources["DynSwitchThumbOff"] = MaterialThemePalette.ToBrush(palette.OnSurfaceMuted, 0.92);
 
             RefreshFavoritesUi();
+            UpdateLocationModeBadge();
         }
 
         private void PopulateUiFromDraft()
@@ -84,6 +85,8 @@ namespace Dsk.Weather.Windows
             {
                 UpdateActiveLocationLabel();
                 RefreshFavoritesUi();
+                AutoLocationCheck.IsChecked = _draft.AutoDetectLocation;
+                UpdateLocationModeBadge();
 
                 SelectComboByTag(LayoutCombo, _draft.LayoutStyle.ToString());
                 SelectComboByTag(ThemeCombo, _draft.ThemeMode.ToString());
@@ -154,10 +157,36 @@ namespace Dsk.Weather.Windows
 
         private void UpdateActiveLocationLabel()
         {
-            string city = string.IsNullOrWhiteSpace(_draft.CityName) ? "Roma" : _draft.CityName;
-            string country = string.IsNullOrWhiteSpace(_draft.CountryName) ? string.Empty : $", {_draft.CountryName}";
-            string coords = string.Format(CultureInfo.InvariantCulture, "({0:0.##}, {1:0.##})", _draft.Latitude, _draft.Longitude);
-            ActiveLocationText.Text = $"{city}{country} {coords}";
+            string city = string.IsNullOrWhiteSpace(_draft.CityName) ? "Roma" : _draft.CityName.Trim();
+            ActiveLocationText.Text = string.IsNullOrWhiteSpace(_draft.CountryName)
+                ? city
+                : $"{city}, {_draft.CountryName.Trim()}";
+            UpdateLocationModeBadge();
+        }
+
+        private void UpdateLocationModeBadge(string? language = null)
+        {
+            if (LocationModeBadge is null || LocationModeText is null || _draft is null)
+            {
+                return;
+            }
+
+            string lang = LocalizationService.NormalizeLanguage(language ?? _draft.Language);
+            bool isAuto = _draft.AutoDetectLocation;
+            LocationModeText.Text = LocalizationService.T(lang, isAuto ? "set_loc_mode_auto" : "set_loc_mode_manual");
+
+            if (isAuto)
+            {
+                LocationModeBadge.Background = MaterialThemePalette.ToBrush(_currentPalette.PrimaryContainer, 0.90);
+                LocationModeBadge.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.Primary, 0.85);
+                LocationModeText.Foreground = MaterialThemePalette.ToBrush(_currentPalette.Primary);
+            }
+            else
+            {
+                LocationModeBadge.Background = MaterialThemePalette.ToBrush(_currentPalette.Surface, 0.82);
+                LocationModeBadge.BorderBrush = MaterialThemePalette.ToBrush(_currentPalette.SurfaceBorder, 0.72);
+                LocationModeText.Foreground = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
+            }
         }
 
         private void RefreshFavoritesUi()
@@ -167,6 +196,7 @@ namespace Dsk.Weather.Windows
                 return;
             }
 
+            bool canRemove = _draft.FavoriteLocations.Count > 1;
             var items = new List<FavoriteItemViewModel>(_draft.FavoriteLocations.Count);
             SolidColorBrush activeBg = MaterialThemePalette.ToBrush(_currentPalette.PrimaryContainer, 0.90);
             SolidColorBrush activeBorder = MaterialThemePalette.ToBrush(_currentPalette.Primary, 0.95);
@@ -182,12 +212,13 @@ namespace Dsk.Weather.Windows
                 {
                     Location = loc,
                     Title = loc.Name,
-                    TooltipText = $"{loc.DisplayLabel} ({loc.Latitude:0.##}, {loc.Longitude:0.##})",
+                    TooltipText = loc.DisplayLabel,
                     PillBg = isActive ? activeBg : inactiveBg,
                     PillBorder = isActive ? activeBorder : inactiveBorder,
                     TextBrush = isActive ? activeText : inactiveText,
                     TitleWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal,
-                    ActiveDotVisibility = isActive ? Visibility.Visible : Visibility.Collapsed
+                    ActiveDotVisibility = isActive ? Visibility.Visible : Visibility.Collapsed,
+                    RemoveVisibility = canRemove ? Visibility.Visible : Visibility.Collapsed
                 });
             }
 
@@ -198,7 +229,19 @@ namespace Dsk.Weather.Windows
         {
             if (sender is Border border && border.Tag is SavedLocation loc)
             {
+                _draft.AutoDetectLocation = false;
+                _isInitializing = true;
+                try
+                {
+                    AutoLocationCheck.IsChecked = false;
+                }
+                finally
+                {
+                    _isInitializing = false;
+                }
+
                 _draft.AddOrSelectLocation(loc.Name, loc.Country, loc.Latitude, loc.Longitude);
+                LocationStatusText.Visibility = Visibility.Collapsed;
                 UpdateActiveLocationLabel();
                 RefreshFavoritesUi();
                 _onSettingsChanged(_draft);
@@ -208,9 +251,22 @@ namespace Dsk.Weather.Windows
         private void BtnRemoveFavorite_Click(object sender, RoutedEventArgs e)
         {
             e.Handled = true;
+            if (_draft.FavoriteLocations.Count <= 1)
+            {
+                return;
+            }
+
             if (sender is Button btn && btn.Tag is SavedLocation loc)
             {
+                bool removedActive = loc.Matches(_draft.CityName, _draft.Latitude, _draft.Longitude);
                 _draft.FavoriteLocations.Remove(loc);
+                if (removedActive && _draft.FavoriteLocations.Count > 0)
+                {
+                    SavedLocation fallback = _draft.FavoriteLocations[0];
+                    _draft.AddOrSelectLocation(fallback.Name, fallback.Country, fallback.Latitude, fallback.Longitude);
+                }
+
+                UpdateActiveLocationLabel();
                 RefreshFavoritesUi();
                 _onSettingsChanged(_draft);
             }
@@ -415,40 +471,99 @@ namespace Dsk.Weather.Windows
                 return;
             }
 
+            _draft.AutoDetectLocation = false;
+            _isInitializing = true;
+            try
+            {
+                AutoLocationCheck.IsChecked = false;
+            }
+            finally
+            {
+                _isInitializing = false;
+            }
+
             _draft.AddOrSelectLocation(selected.Name, selected.Country, selected.Latitude, selected.Longitude);
 
             UpdateActiveLocationLabel();
             RefreshFavoritesUi();
-            SearchStatusText.Text = LocalizationService.Format(_draft.Language, "set_city_added", selected.DisplayName);
+            LocationStatusText.Text = LocalizationService.Format(_draft.Language, "set_city_added", selected.DisplayName);
+            LocationStatusText.Visibility = Visibility.Visible;
             CityResultsList.Visibility = Visibility.Collapsed;
             AddLocationPanel.Visibility = Visibility.Collapsed;
 
             _onSettingsChanged(_draft);
         }
 
-        private async void BtnDetectIp_Click(object sender, RoutedEventArgs e)
+        private async void AutoLocationCheck_Changed(object sender, RoutedEventArgs e)
         {
+            if (_isInitializing || _draft is null)
+            {
+                return;
+            }
+
             string lang = _draft.Language;
-            BtnDetectIp.IsEnabled = false;
-            AddLocationPanel.Visibility = Visibility.Visible;
-            SearchStatusText.Text = LocalizationService.T(lang, "set_ip_detecting");
-            SearchStatusText.Visibility = Visibility.Visible;
+            bool enableAuto = AutoLocationCheck.IsChecked == true;
+            _draft.AutoDetectLocation = enableAuto;
+            UpdateLocationModeBadge();
+
+            if (!enableAuto)
+            {
+                LocationStatusText.Visibility = Visibility.Collapsed;
+                _onSettingsChanged(_draft);
+                return;
+            }
+
+            AutoLocationCheck.IsEnabled = false;
+            LocationStatusText.Text = LocalizationService.T(lang, "set_ip_detecting");
+            LocationStatusText.Visibility = Visibility.Visible;
 
             try
             {
-                GeoLocationResult detected = await _weatherService.DetectLocationByIpAsync();
-                _draft.AddOrSelectLocation(detected.Name, detected.Country, detected.Latitude, detected.Longitude);
+                GeoLocationResult? detected = await _weatherService.TryDetectLocationByIpAsync(lang);
+                if (detected is null)
+                {
+                    LocationStatusText.Text = LocalizationService.T(_draft.Language, "set_ip_failed");
+                    _onSettingsChanged(_draft);
+                    return;
+                }
 
+                bool sameCoords =
+                    Math.Abs(_draft.Latitude - detected.Latitude) < 0.03 &&
+                    Math.Abs(_draft.Longitude - detected.Longitude) < 0.03;
+
+                if (sameCoords)
+                {
+                    if (!string.IsNullOrWhiteSpace(detected.Country))
+                    {
+                        _draft.CountryName = detected.Country;
+                        foreach (SavedLocation loc in _draft.FavoriteLocations)
+                        {
+                            if (loc.Matches(_draft.CityName, _draft.Latitude, _draft.Longitude))
+                            {
+                                loc.Country = detected.Country;
+                            }
+                        }
+                    }
+
+                    UpdateActiveLocationLabel();
+                    RefreshFavoritesUi();
+                    string currentLabel = string.IsNullOrWhiteSpace(_draft.CountryName)
+                        ? _draft.CityName
+                        : $"{_draft.CityName}, {_draft.CountryName}";
+                    LocationStatusText.Text = LocalizationService.Format(_draft.Language, "set_ip_already_current", currentLabel);
+                    _onSettingsChanged(_draft);
+                    return;
+                }
+
+                _draft.AddOrSelectLocation(detected.Name, detected.Country, detected.Latitude, detected.Longitude);
                 UpdateActiveLocationLabel();
                 RefreshFavoritesUi();
-                SearchStatusText.Text = LocalizationService.Format(_draft.Language, "set_ip_detected", detected.DisplayName);
-                CityResultsList.Visibility = Visibility.Collapsed;
-
+                LocationStatusText.Text = LocalizationService.Format(_draft.Language, "set_ip_detected", detected.DisplayName);
                 _onSettingsChanged(_draft);
             }
             finally
             {
-                BtnDetectIp.IsEnabled = true;
+                AutoLocationCheck.IsEnabled = true;
             }
         }
 
@@ -459,22 +574,18 @@ namespace Dsk.Weather.Windows
 
         private async void BtnRefreshWeather_Click(object sender, RoutedEventArgs e)
         {
-            BtnRefreshWeatherTop.IsEnabled = false;
             BtnRefreshWeatherBottom.IsEnabled = false;
             string refreshingText = LocalizationService.T(_draft.Language, "set_refreshing");
-            BtnRefreshWeatherTop.Content = refreshingText;
             BtnRefreshWeatherBottom.Content = refreshingText;
             try
             {
                 await _onRefreshWeatherAsync();
-                SearchStatusText.Visibility = Visibility.Visible;
-                SearchStatusText.Text = LocalizationService.Format(_draft.Language, "set_updated_at", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
+                LocationStatusText.Visibility = Visibility.Visible;
+                LocationStatusText.Text = LocalizationService.Format(_draft.Language, "set_updated_at", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
             }
             finally
             {
-                BtnRefreshWeatherTop.Content = LocalizationService.T(_draft.Language, "set_btn_refresh_short");
                 BtnRefreshWeatherBottom.Content = LocalizationService.T(_draft.Language, "set_btn_refresh");
-                BtnRefreshWeatherTop.IsEnabled = true;
                 BtnRefreshWeatherBottom.IsEnabled = true;
             }
         }
@@ -549,8 +660,8 @@ namespace Dsk.Weather.Windows
             BtnHeaderClose.ToolTip = LocalizationService.T(lang, "set_btn_close_tip");
             SecLocationsTitle.Text = LocalizationService.T(lang, "set_sec_locations");
             ActiveLocationCaption.Text = LocalizationService.T(lang, "set_active_city");
-            BtnRefreshWeatherTop.Content = LocalizationService.T(lang, "set_btn_refresh_short");
-            BtnDetectIp.Content = LocalizationService.T(lang, "set_btn_detect_ip");
+            AutoLocationCheck.Content = LocalizationService.T(lang, "set_auto_location");
+            UpdateLocationModeBadge(lang);
             FavoritesHintText.Text = LocalizationService.T(lang, "set_saved_cities");
             BtnAddLocation.Content = LocalizationService.T(lang, "set_add_location");
             BtnSearchCity.Content = LocalizationService.T(lang, "set_btn_search");
@@ -613,6 +724,7 @@ namespace Dsk.Weather.Windows
             public Brush TextBrush { get; init; } = Brushes.White;
             public FontWeight TitleWeight { get; init; } = FontWeights.Normal;
             public Visibility ActiveDotVisibility { get; init; } = Visibility.Collapsed;
+            public Visibility RemoveVisibility { get; init; } = Visibility.Visible;
         }
     }
 }

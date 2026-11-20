@@ -546,40 +546,54 @@
                                         BorderBrush="{DynamicResource DynBorder}"
                                         BorderThickness="1"
                                         CornerRadius="12"
-                                        Padding="11,8"
-                                        Margin="0,0,0,10">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock x:Name="ActiveLocationCaption" Text="Località attiva" FontSize="11" Foreground="{DynamicResource DynMuted}" />
-                                            <TextBlock x:Name="ActiveLocationText"
-                                                       FontSize="13.5"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource DynText}"
-                                                       Margin="0,2,0,0" />
-                                        </StackPanel>
-                                        <Button Grid.Column="1"
-                                                x:Name="BtnRefreshWeatherTop"
-                                                Content="↻ Ricarica"
-                                                Style="{StaticResource SettingsButtonStyle}"
-                                                Padding="10,6"
-                                                FontSize="12"
-                                                Margin="0,0,6,0"
-                                                ToolTip="Forza subito l'aggiornamento dei dati meteo"
-                                                Click="BtnRefreshWeather_Click" />
-                                        <Button Grid.Column="2"
-                                                x:Name="BtnDetectIp"
-                                                Content="Rileva da IP"
-                                                Style="{StaticResource SettingsButtonStyle}"
-                                                Padding="10,6"
-                                                FontSize="12"
-                                                Click="BtnDetectIp_Click" />
-                                    </Grid>
+                                        Padding="12,9"
+                                        Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock x:Name="ActiveLocationCaption"
+                                                       Grid.Column="0"
+                                                       Text="Località attiva"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource DynMuted}" />
+                                            <Border x:Name="LocationModeBadge"
+                                                    Grid.Column="1"
+                                                    CornerRadius="8"
+                                                    Padding="7,2"
+                                                    BorderThickness="1"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock x:Name="LocationModeText"
+                                                           Text="Manuale"
+                                                           FontSize="10.5"
+                                                           FontWeight="SemiBold" />
+                                            </Border>
+                                        </Grid>
+                                        <TextBlock x:Name="ActiveLocationText"
+                                                   FontSize="14"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource DynText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="0,3,0,0" />
+                                    </StackPanel>
                                 </Border>
+
+                                <CheckBox x:Name="AutoLocationCheck"
+                                          Content="Posizione automatica (rete / IP)"
+                                          Style="{StaticResource MaterialSwitchStyle}"
+                                          Margin="0,0,0,6"
+                                          Checked="AutoLocationCheck_Changed"
+                                          Unchecked="AutoLocationCheck_Changed" />
+
+                                <TextBlock x:Name="LocationStatusText"
+                                           FontSize="11.5"
+                                           Foreground="{DynamicResource DynMuted}"
+                                           Margin="2,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="Collapsed" />
 
                                 <!-- Lista Posizioni Preferite + Bottone Aggiungi posizione -->
                                 <TextBlock x:Name="FavoritesHintText"
@@ -620,6 +634,7 @@
                                                                    VerticalAlignment="Center" />
                                                         <Button Content="✕"
                                                                 Tag="{Binding Location}"
+                                                                Visibility="{Binding RemoveVisibility}"
                                                                 Margin="4,0,0,0"
                                                                 Cursor="Hand"
                                                                 ToolTip="Rimuovi dai preferiti"

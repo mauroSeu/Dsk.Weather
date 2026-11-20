@@ -49,7 +49,8 @@ namespace Dsk.Weather.Tests
                 ("DpcItalyOfficialAlertsByMunicipality", TestDpcItalyOfficialAlertsByMunicipality),
                 ("IpmaPortugalOfficialAlertsParsing", TestIpmaPortugalOfficialAlertsParsing),
                 ("MetNorwayOfficialAlertsParsing", TestMetNorwayOfficialAlertsParsing),
-                ("HourlyStripSeparateCurvesAndHumidity", TestHourlyStripSeparateCurvesAndHumidity)
+                ("HourlyStripSeparateCurvesAndHumidity", TestHourlyStripSeparateCurvesAndHumidity),
+                ("LocationAutoDetectionAndCleanSettingsUi", TestLocationAutoDetectionAndCleanSettingsUi)
             };
 
             int failures = 0;
@@ -1928,6 +1929,93 @@ namespace Dsk.Weather.Tests
             finally
             {
                 window?.Close();
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
+        }
+
+        private static void TestLocationAutoDetectionAndCleanSettingsUi()
+        {
+            const string geoJsSample = """{"city":"Lemmer","region":"Friesland","country":"The Netherlands","latitude":"52.8491","longitude":"5.699"}""";
+            GeoLocationResult? geoParsed = WeatherService.ParseGeoJsJson(geoJsSample);
+            AssertTrue(geoParsed is not null, "GeoJS JSON valido parsato");
+            AssertEqual("Lemmer", geoParsed!.Name, "GeoJS città");
+            AssertEqual("The Netherlands", geoParsed.Country, "GeoJS paese");
+            AssertTrue(Math.Abs(geoParsed.Latitude - 52.8491) < 0.001, "GeoJS latitudine");
+
+            const string ipWhoValid = """{"success":true,"city":"De Fryske Marren","region":"Friesland","country":"Netherlands","latitude":53.1667,"longitude":5.8333}""";
+            GeoLocationResult? ipWhoParsed = WeatherService.ParseIpWhoIsJson(ipWhoValid);
+            AssertTrue(ipWhoParsed is not null && ipWhoParsed.Name == "De Fryske Marren", "ipwho.is fallback valido");
+
+            const string ipWhoFail = """{"success":false,"message":"invalid IP"}""";
+            AssertTrue(WeatherService.ParseIpWhoIsJson(ipWhoFail) is null, "ipwho.is success=false deve restituire null");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "DskWeatherTests_AutoLoc_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var svc = new SettingsService(tempDir);
+                var cfg = new WidgetSettings
+                {
+                    AutoDetectLocation = true,
+                    Language = "it"
+                };
+                cfg.AddOrSelectLocation("Lemmer", "Paesi Bassi", 52.8491, 5.699);
+                svc.Save(cfg);
+
+                WidgetSettings reloaded = svc.Load();
+                AssertEqual(true, reloaded.AutoDetectLocation, "Persistenza AutoDetectLocation = true");
+                WidgetSettings cloned = reloaded.Clone();
+                AssertEqual(true, cloned.AutoDetectLocation, "Clone preserva AutoDetectLocation");
+                cloned.ResetStyleToDefaults();
+                AssertEqual(true, cloned.AutoDetectLocation, "ResetStyleToDefaults non deve alterare AutoDetectLocation");
+
+                if (System.Windows.Application.Current is null)
+                {
+                    var app = new Dsk.Weather.App();
+                    app.InitializeComponent();
+                }
+
+                WidgetSettings manualCfg = reloaded.Clone();
+                manualCfg.AutoDetectLocation = false;
+                var winManual = new Dsk.Weather.Windows.SettingsWindow(
+                    manualCfg,
+                    new WeatherService(),
+                    new AutostartService(),
+                    _ => { },
+                    () => { });
+                try
+                {
+                    AssertEqual("Lemmer, Paesi Bassi", winManual.ActiveLocationText.Text, "ActiveLocationText senza coordinate");
+                    AssertTrue(!winManual.ActiveLocationText.Text.Contains('('), "Nessuna parentesi/coordinata in ActiveLocationText");
+                    AssertEqual("Manuale", winManual.LocationModeText.Text, "Badge modalità Manuale");
+                    winManual.ApplyLanguage("en");
+                    AssertEqual("Automatic location (network / IP)", (string)winManual.AutoLocationCheck.Content, "Switch Posizione automatica in inglese");
+                    AssertEqual("Manual", winManual.LocationModeText.Text, "Badge modalità Manual in inglese");
+                }
+                finally
+                {
+                    winManual.Close();
+                }
+
+                var winAuto = new Dsk.Weather.Windows.SettingsWindow(
+                    reloaded,
+                    new WeatherService(),
+                    new AutostartService(),
+                    _ => { },
+                    () => { });
+                try
+                {
+                    AssertEqual("Auto", winAuto.LocationModeText.Text, "Badge modalità Auto con AutoDetectLocation = true");
+                }
+                finally
+                {
+                    winAuto.Close();
+                }
+            }
+            finally
+            {
                 if (Directory.Exists(tempDir))
                 {
                     Directory.Delete(tempDir, recursive: true);

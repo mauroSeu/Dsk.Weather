@@ -53,6 +53,7 @@ namespace Dsk.Weather.Windows
         private string _lastDisplayedDate = string.Empty;
         private string? _lastWallpaperPath;
         private DateTime _lastWallpaperWriteUtc;
+        private DateTime _lastAutoDetectUtc = DateTime.MinValue;
         private bool _isDrawerOpen;
         private bool _isRadarTabActive;
         private int _weatherRequestVersion;
@@ -190,7 +191,7 @@ namespace Dsk.Weather.Windows
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                 {
                     UpdateClockDisplay(force: true);
-                    _ = RefreshWeatherAsync();
+                    _ = RefreshWeatherWithAutoLocationAsync();
                 }));
             }
         }
@@ -201,7 +202,7 @@ namespace Dsk.Weather.Windows
             {
                 Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
                 {
-                    _ = RefreshWeatherAsync();
+                    _ = RefreshWeatherWithAutoLocationAsync();
                 }));
             }
         }
@@ -289,17 +290,67 @@ namespace Dsk.Weather.Windows
         {
             if (!_settings.LocationInitialized || string.IsNullOrWhiteSpace(_settings.CityName))
             {
-                GeoLocationResult detected = await _weatherService.DetectLocationByIpAsync();
-                _settings.CityName = detected.Name;
-                _settings.CountryName = detected.Country;
-                _settings.Latitude = detected.Latitude;
-                _settings.Longitude = detected.Longitude;
-                _settings.LocationInitialized = true;
+                GeoLocationResult detected = await _weatherService.DetectLocationByIpAsync(_settings.Language);
+                _settings.AddOrSelectLocation(detected.Name, detected.Country, detected.Latitude, detected.Longitude);
                 _settingsService.Save(_settings);
+                _lastAutoDetectUtc = DateTime.UtcNow;
                 UpdateWeatherDisplay();
+            }
+            else if (_settings.AutoDetectLocation)
+            {
+                await TryAutoUpdateLocationAsync();
             }
 
             await RefreshWeatherAsync();
+        }
+
+        private async Task RefreshWeatherWithAutoLocationAsync()
+        {
+            if (_settings.AutoDetectLocation)
+            {
+                await TryAutoUpdateLocationAsync();
+            }
+
+            await RefreshWeatherAsync();
+        }
+
+        private async Task TryAutoUpdateLocationAsync()
+        {
+            if (!_settings.AutoDetectLocation)
+            {
+                return;
+            }
+
+            if ((DateTime.UtcNow - _lastAutoDetectUtc) < TimeSpan.FromMinutes(2))
+            {
+                return;
+            }
+
+            _lastAutoDetectUtc = DateTime.UtcNow;
+            GeoLocationResult? detected = await _weatherService.TryDetectLocationByIpAsync(_settings.Language);
+            if (detected is null)
+            {
+                return;
+            }
+
+            bool moved =
+                Math.Abs(_settings.Latitude - detected.Latitude) >= 0.03 ||
+                Math.Abs(_settings.Longitude - detected.Longitude) >= 0.03;
+
+            if (!moved)
+            {
+                return;
+            }
+
+            _officialAlertResult = null;
+            _settings.AddOrSelectLocation(detected.Name, detected.Country, detected.Latitude, detected.Longitude);
+            _settingsService.Save(_settings);
+            UpdateWeatherDisplay();
+            UpdateQuickCitySwitchHints();
+            if (_isDrawerOpen && _isRadarTabActive)
+            {
+                _ = ActivateRadarAsync();
+            }
         }
 
         public async Task RefreshWeatherAsync()
@@ -1950,6 +2001,7 @@ namespace Dsk.Weather.Windows
         private void SelectFavoriteLocation(SavedLocation target)
         {
             _officialAlertResult = null;
+            _settings.AutoDetectLocation = false;
             _settings.AddOrSelectLocation(target.Name, target.Country, target.Latitude, target.Longitude);
             _settingsService.Save(_settings);
             UpdateQuickCitySwitchHints();

@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-31%2F31%20Passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-32%2F32%20Passing-brightgreen?style=flat-square)
 
 Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Allerte Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
 
@@ -16,7 +16,7 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.5.0`)
+## Funzionalità Principali (`v1.5.1`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
 - **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour) sia alla Card che al pannello espandibile Previsioni / Radar.
@@ -26,7 +26,7 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 - **Striscia Oraria 24 Ore Scorrevole + 3 Curve Indipendenti + Tramonto/Alba (Tutti i Layout):** disponibile su tutti e 3 i layout (*Card Completa*, *Minimal Trasparente* con testo e curve ad alto contrasto ed effetto ombra su desktop trasparente, *Material Compatto* con spaziatura raccolta), scorribile fluidamente con rotellina del mouse o trascinamento e con barra di scorrimento discreta visibile solo al passaggio del mouse. La striscia 24h è attivabile separatamente dalle sue **3 curve Bézier indipendenti** (**Curva Termica `°`**, **Curva Precipitazioni `%`** con scala 0–100 e **Curva Umidità `%`**) complete di legenda automatica e **slot dedicati per Tramonto e Alba** all'orario esatto.
 - **Previsioni 7 Giorni:** tabella settimanale nel pannello espandibile con formato data `Lun 23`, gocciolina + `% pioggia`, triangolino direzionale del vento + `km/h`, e `Min° / Max°`.
 - **Radar Precipitazioni Live OpenStreetMap:** scheda dedicata **Radar Live** su mappe **OpenStreetMap** senza watermark, con passaggio **automatico alba/tramonto** tra modalità **diurna chiara** e **notturna scura** (più switch manuale `◐`), 4 livelli di zoom `Z5–Z8` anche tramite rotellina del mouse, anello di portata in `km`, onda sonar sul pin città e timeline 8 fotogrammi **RainViewer** con cross-fade (`0%` CPU a pannello chiuso).
-- **Posizioni Preferite & Cambio Rapido 1-Click:** salva più località preferite nelle Impostazioni e alterna istantaneamente tra di esse con **1 click** direttamente sulla riga località della card (o dal menu tasto destro).
+- **Posizioni Preferite, Rilevamento Automatico (IP) & Cambio Rapido 1-Click:** salva più località preferite nelle Impostazioni (senza mostrare coordinate superflue nell'interfaccia, con protezione dell'ultima città salvata) e alterna istantaneamente tra di esse con **1 click** direttamente sulla riga località della card (o dal menu tasto destro), oppure attiva **Posizione automatica (rete / IP)** con rilevamento a cascata **GeoJS → fallback `ipwho.is`** e localizzazione del Paese.
 - **Finestra Impostazioni Material You & Multilingua (6 Lingue):** pannello floating arrotondato sincronizzato live con la palette attiva del widget, completo di switch a pillola, slider custom e **selettore lingua live** (*Italiano, English, Deutsch, Nederlands, Español, Português*).
 - **Motore Meteo Ad Alta Precisione + Ripresa Automatica:** utilizza automaticamente il profilo ad alta precisione `best_match` su **Open-Meteo** (modelli locali ad alta risoluzione fino a 2 km + ECMWF IFS con indice UV e raffiche completi), salvataggio atomico con retry + debounce e ripresa automatica dopo standby o ripristino rete.
 
@@ -62,7 +62,7 @@ Per gestire l'avvio automatico con Windows:
 # Compilazione intera solution (App + Test)
 dotnet build Dsk.Weather.sln -c Release
 
-# Esecuzione suite test unitari deterministici (31/31 check)
+# Esecuzione suite test unitari deterministici (32/32 check)
 dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
 
 # Pubblicazione pacchetto finale in dist\
@@ -77,7 +77,7 @@ L'app non raccoglie telemetria né richiede account o chiavi API. Impostazioni e
 
 - **Meteo & Geocoding:** [Open-Meteo](https://open-meteo.com/) (CC BY 4.0)
 - **Allerte Meteo Ufficiali:** [Dipartimento della Protezione Civile (Open Data)](https://github.com/pcm-dpc/DPC-Bollettini-Criticita-Idrogeologica-Idraulica) (Italia per Comune esatto, CC BY 4.0), [DWD / Bright Sky](https://brightsky.dev/) (Germania), [NOAA National Weather Service](https://www.weather.gov/documentation/services-web-api) (USA), [IPMA Open Data](https://api.ipma.pt/) (Portogallo), [MET Norway MetAlerts](https://api.met.no/weatherapi/metalerts/2.0/documentation) (Norvegia), [EUMETNET MeteoAlarm](https://www.meteoalarm.org/) (Paesi EU con granularità provinciale/poligonale), risoluzione amministrativa [Nominatim OSM](https://nominatim.openstreetmap.org/)
-- **Geolocalizzazione IP iniziale (solo al primo avvio):** [GeoJS](https://www.geojs.io/)
+- **Geolocalizzazione IP (primo avvio / modalità automatica):** [GeoJS](https://www.geojs.io/) con fallback [ipwho.is](https://ipwho.is/) e nomi località via [Nominatim OSM](https://nominatim.openstreetmap.org/)
 - **Radar Precipitazioni:** [RainViewer](https://www.rainviewer.com/)
 - **Mappa Base Radar:** [OpenStreetMap](https://www.openstreetmap.org/copyright) (© OpenStreetMap contributors)
 
