@@ -23,7 +23,7 @@ jobs:
       - name: Build Solution (Release)
         run: dotnet build Dsk.Weather.sln -c Release
 
-      - name: Run Unit Tests (33 checks)
+      - name: Run Unit Tests (34 checks)
         run: dotnet tests/Dsk.Weather.Tests/bin/Release/net8.0-windows/Dsk.Weather.Tests.dll
 
       - name: Publish Release Artifacts

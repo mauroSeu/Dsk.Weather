@@ -51,7 +51,8 @@ namespace Dsk.Weather.Tests
                 ("MetNorwayOfficialAlertsParsing", TestMetNorwayOfficialAlertsParsing),
                 ("HourlyStripSeparateCurvesAndHumidity", TestHourlyStripSeparateCurvesAndHumidity),
                 ("LocationAutoDetectionAndCleanSettingsUi", TestLocationAutoDetectionAndCleanSettingsUi),
-                ("SettingsWindowExitWidgetAction", TestSettingsWindowExitWidgetAction)
+                ("SettingsWindowExitWidgetAction", TestSettingsWindowExitWidgetAction),
+                ("ProceduralAtmosphereTexturesAndSeamlessTiling", TestProceduralAtmosphereTexturesAndSeamlessTiling)
             };
 
             int failures = 0;
@@ -2076,6 +2077,97 @@ namespace Dsk.Weather.Tests
             {
                 win.Close();
             }
+        }
+
+        private static void TestProceduralAtmosphereTexturesAndSeamlessTiling()
+        {
+            static (int VisiblePixels, double MeanEdgeAlphaDiff) AnalyzeAlpha(System.Windows.Media.Imaging.BitmapSource bmp)
+            {
+                int w = bmp.PixelWidth;
+                int h = bmp.PixelHeight;
+                int stride = w * 4;
+                byte[] pixels = new byte[stride * h];
+                bmp.CopyPixels(pixels, stride, 0);
+
+                int visible = 0;
+                double diffSum = 0.0;
+                for (int y = 0; y < h; y++)
+                {
+                    int row = y * stride;
+                    byte leftAlpha = pixels[row + 3];
+                    byte rightAlpha = pixels[row + (w - 1) * 4 + 3];
+                    diffSum += Math.Abs(leftAlpha - rightAlpha);
+
+                    for (int x = 0; x < w; x++)
+                    {
+                        if (pixels[row + x * 4 + 3] > 20)
+                        {
+                            visible++;
+                        }
+                    }
+                }
+
+                return (visible, diffSum / Math.Max(1, h));
+            }
+
+            (bool Light, bool Night, bool Storm, string Label)[] variants =
+            {
+                (false, false, false, "CloudDayDark"),
+                (false, true, false, "CloudNightDark"),
+                (false, false, true, "CloudStormDark"),
+                (true, false, false, "CloudDayLight")
+            };
+
+            foreach ((bool light, bool night, bool storm, string label) in variants)
+            {
+                System.Windows.Media.Imaging.BitmapSource cloud = Dsk.Weather.Services.ProceduralAtmosphereFactory.BuildCloudLayerBitmap(
+                    256, 96, light, night, storm, seed: 101, coverageThreshold: 0.31);
+                AssertTrue(cloud.IsFrozen, $"{label} deve essere frozen");
+                AssertEqual(256, cloud.PixelWidth, $"{label} PixelWidth");
+                AssertEqual(96, cloud.PixelHeight, $"{label} PixelHeight");
+
+                (int visible, double edgeDiff) = AnalyzeAlpha(cloud);
+                AssertTrue(visible > 400, $"{label} deve avere pixel nuvolosi visibili (trovati {visible})");
+                AssertTrue(edgeDiff < 18.0, $"{label} tiling orizzontale non seamless (diff medio bordi {edgeDiff:F2})");
+            }
+
+            System.Windows.Media.Imaging.BitmapSource fog = Dsk.Weather.Services.ProceduralAtmosphereFactory.BuildFogLayerBitmap(256, 72, isLightTheme: false, seed: 301);
+            AssertTrue(fog.IsFrozen, "Fog bitmap deve essere frozen");
+            AssertTrue(AnalyzeAlpha(fog).VisiblePixels > 200, "Fog bitmap deve contenere veli visibili");
+
+            System.Windows.Media.Imaging.BitmapSource rays = Dsk.Weather.Services.ProceduralAtmosphereFactory.BuildSunRaysBitmap(220, 180, isLightTheme: false, seed: 41);
+            AssertTrue(rays.IsFrozen, "SunRays bitmap deve essere frozen");
+            AssertTrue(AnalyzeAlpha(rays).VisiblePixels > 200, "SunRays bitmap deve contenere fasci visibili");
+
+            var scene = new Dsk.Weather.Controls.WeatherSceneCanvas();
+            scene.Configure(WeatherIconKind.Cloudy, enabled: true, isLightTheme: false);
+            AssertTrue(scene.ActiveAnimationCount > 0, "Scena Cloudy deve avere animazioni attive");
+
+            int imageCount = 0;
+            int ellipseCount = 0;
+            void WalkPanel(System.Windows.Controls.Panel panel)
+            {
+                foreach (object child in panel.Children)
+                {
+                    if (child is System.Windows.Controls.Image)
+                    {
+                        imageCount++;
+                    }
+                    else if (child is System.Windows.Shapes.Ellipse)
+                    {
+                        ellipseCount++;
+                    }
+                    else if (child is System.Windows.Controls.Panel subPanel)
+                    {
+                        WalkPanel(subPanel);
+                    }
+                }
+            }
+
+            WalkPanel(scene.SceneCanvas);
+            AssertTrue(imageCount > 0, "Scena Cloudy deve usare texture volumetriche Image");
+            AssertEqual(0, ellipseCount, "Scena Cloudy non deve più usare cerchi Ellipse");
+            scene.Stop();
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

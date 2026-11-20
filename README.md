@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-33%2F33%20Passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-34%2F34%20Passing-brightgreen?style=flat-square)
 
 Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Allerte Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
 
@@ -16,11 +16,11 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.5.2`)
+## Funzionalità Principali (`v1.6.0`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
 - **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour) sia alla Card che al pannello espandibile Previsioni / Radar.
-- **Animazioni Meteo (30 FPS):** scena animata leggera sullo sfondo della card (sole pulsante, stelle scintillanti e scia, nuvole in movimento, gocce oblique, neve, nebbia, lampi discreti) + icona meteo animata (disattivabile dalle Impostazioni).
+- **Animazioni Meteo Volumetriche Procedurali (30 FPS):** motore atmosferico nativo `Pbgra32` (`ProceduralAtmosphereFactory`) con texture congelate (`.Freeze()`) in cache: **nuvole fBm volumetriche seamless su 2–3 strati in parallasse**, **fasci di luce crepuscolare (god rays)** + particelle bokeh dorate per il sole, **nebbia organica** in contro-scorrimento, **pioggia e neve bokeh su 2 piani di profondità**, e **sheet lightning** dentro i banchi nuvolosi con scarica elettrica ramificata per i temporali (disattivabile dalle Impostazioni).
 - **Riepilogo *"At a Glance"* deterministico:** analizza le prossime 12 ore per segnalare temporali, pioggia in arrivo, vento sostenuto, nebbia, UV alto o cali termici.
 - **Allerte Meteo Ufficiali (Giallo / Arancione / Rosso):** badge a vetro semitrasparente accanto all'orologio + banner descrittivo nel pannello Previsioni alimentati dai servizi meteorologici e di protezione civile nazionali ufficiali (**Dipartimento della Protezione Civile** per Comune esatto in Italia, **DWD / Bright Sky** per la Germania, **NOAA NWS** per gli USA, **IPMA** per il Portogallo, **MET Norway** per la Norvegia, ed **EUMETNET MeteoAlarm CAP 1.2** solo nei Paesi EU con granularità provinciale/poligonale), con test **Point-in-Polygon / Haversine**, ciclo vita **`Alert -> Update -> Cancel`**, cache **stale-while-error** (`Live` / `StaleCache` / `Fallback`) e fallback persistente (>= 2h consecutive) su Open-Meteo fuori copertura; **invisibile quando il tempo è neutro**.
 - **Striscia Oraria 24 Ore Scorrevole + 3 Curve Indipendenti + Tramonto/Alba (Tutti i Layout):** disponibile su tutti e 3 i layout (*Card Completa*, *Minimal Trasparente* con testo e curve ad alto contrasto ed effetto ombra su desktop trasparente, *Material Compatto* con spaziatura raccolta), scorribile fluidamente con rotellina del mouse o trascinamento e con barra di scorrimento discreta visibile solo al passaggio del mouse. La striscia 24h è attivabile separatamente dalle sue **3 curve Bézier indipendenti** (**Curva Termica `°`**, **Curva Precipitazioni `%`** con scala 0–100 e **Curva Umidità `%`**) complete di legenda automatica e **slot dedicati per Tramonto e Alba** all'orario esatto.
@@ -62,7 +62,7 @@ Per gestire l'avvio automatico con Windows:
 # Compilazione intera solution (App + Test)
 dotnet build Dsk.Weather.sln -c Release
 
-# Esecuzione suite test unitari deterministici (33/33 check)
+# Esecuzione suite test unitari deterministici (34/34 check)
 dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
 
 # Pubblicazione pacchetto finale in dist\
