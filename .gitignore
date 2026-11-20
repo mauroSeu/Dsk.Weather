@@ -1,0 +1,30 @@
+# .NET / Visual Studio / Rider / VS Code
+bin/
+obj/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.cache
+*.pdb
+TestResults/
+publish/
+
+# Build / Release / Local artifacts
+dist/
+release/
+artifacts/
+.dispatch/
+.audit/
+
+# Windows / Logs / Temp
+*.lnk
+*.log
+*.tmp
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/

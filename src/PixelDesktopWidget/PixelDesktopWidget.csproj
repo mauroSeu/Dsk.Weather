@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>PixelDesktopWidget</AssemblyName>
+    <RootNamespace>PixelDesktopWidget</RootNamespace>
+    <Version>1.2.0</Version>
+    <AssemblyVersion>1.2.0.0</AssemblyVersion>
+    <FileVersion>1.2.0.0</FileVersion>
+    <Authors>Argon Nexus</Authors>
+    <Company>Argon Nexus Open Source</Company>
+    <Product>Pixel Desktop Widget</Product>
+    <Copyright>Copyright (c) 2026 Argon Nexus</Copyright>
+    <Description>Widget desktop Material You stile Google Pixel per Windows 11</Description>
+    <Deterministic>true</Deterministic>
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PixelDesktopWidget.Tests" />
+    <None Include="Avvia-PixelWidget.vbs" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+  </ItemGroup>
+
+</Project>
