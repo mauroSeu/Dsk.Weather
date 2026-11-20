@@ -17,8 +17,7 @@ namespace Dsk.Weather.Windows
         private readonly WeatherService _weatherService;
         private readonly AutostartService _autostartService;
         private readonly Action<WidgetSettings> _onSettingsChanged;
-        private readonly Action _onResetPosition;
-        private readonly Func<Task> _onRefreshWeatherAsync;
+        private readonly Action? _onExitApp;
 
         private bool _isInitializing = true;
         private MaterialThemePalette _currentPalette;
@@ -30,15 +29,17 @@ namespace Dsk.Weather.Windows
             Action<WidgetSettings> onSettingsChanged,
             Action onResetPosition,
             Func<Task>? onRefreshWeatherAsync = null,
-            MaterialThemePalette? initialPalette = null)
+            MaterialThemePalette? initialPalette = null,
+            Action? onExitApp = null)
         {
             _draft = initialSettings.Clone();
             _draft.Normalize();
             _weatherService = weatherService;
             _autostartService = autostartService;
             _onSettingsChanged = onSettingsChanged;
-            _onResetPosition = onResetPosition;
-            _onRefreshWeatherAsync = onRefreshWeatherAsync ?? (() => Task.CompletedTask);
+            _ = onResetPosition;
+            _ = onRefreshWeatherAsync;
+            _onExitApp = onExitApp;
             _currentPalette = initialPalette ?? new MaterialColorService().BuildPalette(_draft.ThemeMode);
 
             InitializeComponent();
@@ -73,6 +74,10 @@ namespace Dsk.Weather.Windows
             Resources["DynButtonBg"] = MaterialThemePalette.ToBrush(palette.SurfaceVariant, isLightTheme ? 0.82 : 0.76);
             Resources["DynSwitchTrackOff"] = MaterialThemePalette.ToBrush(palette.SurfaceBorder, isLightTheme ? 0.55 : 0.70);
             Resources["DynSwitchThumbOff"] = MaterialThemePalette.ToBrush(palette.OnSurfaceMuted, 0.92);
+            Resources["DynDangerBg"] = new SolidColorBrush(isLightTheme ? Color.FromArgb(0x16, 0xDC, 0x26, 0x26) : Color.FromArgb(0x22, 0xEF, 0x44, 0x44));
+            Resources["DynDangerHoverBg"] = new SolidColorBrush(isLightTheme ? Color.FromArgb(0x28, 0xDC, 0x26, 0x26) : Color.FromArgb(0x38, 0xEF, 0x44, 0x44));
+            Resources["DynDangerBorder"] = new SolidColorBrush(isLightTheme ? Color.FromArgb(0x48, 0xDC, 0x26, 0x26) : Color.FromArgb(0x55, 0xF8, 0x71, 0x71));
+            Resources["DynDangerFg"] = new SolidColorBrush(isLightTheme ? Color.FromRgb(0xB9, 0x1C, 0x1C) : Color.FromRgb(0xFC, 0xA5, 0xA5));
 
             RefreshFavoritesUi();
             UpdateLocationModeBadge();
@@ -567,29 +572,6 @@ namespace Dsk.Weather.Windows
             }
         }
 
-        private void BtnResetPosition_Click(object sender, RoutedEventArgs e)
-        {
-            _onResetPosition();
-        }
-
-        private async void BtnRefreshWeather_Click(object sender, RoutedEventArgs e)
-        {
-            BtnRefreshWeatherBottom.IsEnabled = false;
-            string refreshingText = LocalizationService.T(_draft.Language, "set_refreshing");
-            BtnRefreshWeatherBottom.Content = refreshingText;
-            try
-            {
-                await _onRefreshWeatherAsync();
-                LocationStatusText.Visibility = Visibility.Visible;
-                LocationStatusText.Text = LocalizationService.Format(_draft.Language, "set_updated_at", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
-            }
-            finally
-            {
-                BtnRefreshWeatherBottom.Content = LocalizationService.T(_draft.Language, "set_btn_refresh");
-                BtnRefreshWeatherBottom.IsEnabled = true;
-            }
-        }
-
         private void HeaderBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             if (e.LeftButton != MouseButtonState.Pressed)
@@ -704,9 +686,14 @@ namespace Dsk.Weather.Windows
             LockPositionCheck.Content = LocalizationService.T(lang, "set_lock_pos");
             AutostartCheck.Content = LocalizationService.T(lang, "set_autostart");
 
-            BtnResetPositionBottom.Content = LocalizationService.T(lang, "set_btn_reset_pos");
-            BtnRefreshWeatherBottom.Content = LocalizationService.T(lang, "set_btn_refresh");
-            BtnCloseBottom.Content = LocalizationService.T(lang, "set_btn_close");
+            BtnExitWidgetText.Text = LocalizationService.T(lang, "set_btn_exit_widget");
+            BtnExitWidget.ToolTip = LocalizationService.T(lang, "set_btn_exit_widget_tip");
+        }
+
+        private void BtnExitWidget_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+            _onExitApp?.Invoke();
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

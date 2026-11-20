@@ -31,6 +31,10 @@
         <SolidColorBrush x:Key="DynButtonBg" Color="#BA21293A" />
         <SolidColorBrush x:Key="DynSwitchTrackOff" Color="#88364259" />
         <SolidColorBrush x:Key="DynSwitchThumbOff" Color="#A6B4CA" />
+        <SolidColorBrush x:Key="DynDangerBg" Color="#22EF4444" />
+        <SolidColorBrush x:Key="DynDangerHoverBg" Color="#38EF4444" />
+        <SolidColorBrush x:Key="DynDangerBorder" Color="#55F87171" />
+        <SolidColorBrush x:Key="DynDangerFg" Color="#FCA5A5" />
 
         <DropShadowEffect x:Key="SettingsDropShadow"
                           Color="Black"
@@ -134,6 +138,41 @@
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="BtnBorder" Property="Opacity" Value="0.75" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SettingsDangerButtonStyle" TargetType="Button" BasedOn="{StaticResource SettingsButtonStyle}">
+            <Setter Property="Background" Value="{DynamicResource DynDangerBg}" />
+            <Setter Property="Foreground" Value="{DynamicResource DynDangerFg}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource DynDangerBorder}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BtnBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Background" Value="{DynamicResource DynDangerHoverBg}" />
+                                <Setter TargetName="BtnBorder" Property="BorderBrush" Value="{DynamicResource DynDangerFg}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="BtnBorder" Property="Opacity" Value="0.82" />
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45" />
@@ -474,10 +513,9 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
-                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- Header Personalizzato Trascinabile (stile Card Pixel) -->
+                <!-- Header Personalizzato Trascinabile -->
                 <Grid Grid.Row="0"
                       Background="Transparent"
                       Cursor="SizeAll"
@@ -939,47 +977,31 @@
                                           Style="{StaticResource MaterialSwitchStyle}"
                                           Checked="AutostartCheck_Changed"
                                           Unchecked="AutostartCheck_Changed" />
+
+                                <Border Height="1"
+                                        Background="{DynamicResource DynBorder}"
+                                        Margin="0,12,0,12" />
+
+                                <Button x:Name="BtnExitWidget"
+                                        Style="{StaticResource SettingsDangerButtonStyle}"
+                                        HorizontalAlignment="Stretch"
+                                        ToolTip="Termina Dsk.Weather e rimuove il widget dal desktop e dalla barra di sistema"
+                                        Click="BtnExitWidget_Click">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock Text="&#xE7E8;"
+                                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol"
+                                                   FontSize="13.5"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,1,8,0" />
+                                        <TextBlock x:Name="BtnExitWidgetText"
+                                                   Text="Chiudi completamente il widget"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
-
-                <!-- Barra Azioni Inferiore -->
-                <Border Grid.Row="3"
-                        BorderBrush="{DynamicResource DynBorder}"
-                        BorderThickness="0,1,0,0"
-                        Margin="0,12,0,0"
-                        Padding="0,12,0,0">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                        </Grid.ColumnDefinitions>
-
-                        <Button Grid.Column="0"
-                                x:Name="BtnResetPositionBottom"
-                                Content="Ripristina posizione"
-                                Style="{StaticResource SettingsButtonStyle}"
-                                Margin="0,0,8,0"
-                                Click="BtnResetPosition_Click" />
-
-                        <Button Grid.Column="1"
-                                x:Name="BtnRefreshWeatherBottom"
-                                Content="↻ Ricarica meteo"
-                                Style="{StaticResource SettingsButtonStyle}"
-                                ToolTip="Forza subito l'aggiornamento dei dati meteo"
-                                Click="BtnRefreshWeather_Click" />
-
-                        <Button Grid.Column="3"
-                                x:Name="BtnCloseBottom"
-                                Content="Chiudi"
-                                Style="{StaticResource SettingsAccentButtonStyle}"
-                                MinWidth="96"
-                                Click="BtnClose_Click" />
-                    </Grid>
-                </Border>
             </Grid>
         </Border>
     </Grid>

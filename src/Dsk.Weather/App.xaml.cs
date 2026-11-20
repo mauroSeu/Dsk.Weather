@@ -191,7 +191,8 @@ namespace Dsk.Weather
                 },
                 () => _widgetWindow?.ResetToDefaultPosition(),
                 () => _widgetWindow is not null ? _widgetWindow.RefreshWeatherAsync() : System.Threading.Tasks.Task.CompletedTask,
-                _widgetWindow?.CurrentPalette);
+                _widgetWindow?.CurrentPalette,
+                RequestExit);
 
             _settingsWindow.Closed += (_, _) =>
             {

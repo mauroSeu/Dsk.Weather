@@ -50,7 +50,8 @@ namespace Dsk.Weather.Tests
                 ("IpmaPortugalOfficialAlertsParsing", TestIpmaPortugalOfficialAlertsParsing),
                 ("MetNorwayOfficialAlertsParsing", TestMetNorwayOfficialAlertsParsing),
                 ("HourlyStripSeparateCurvesAndHumidity", TestHourlyStripSeparateCurvesAndHumidity),
-                ("LocationAutoDetectionAndCleanSettingsUi", TestLocationAutoDetectionAndCleanSettingsUi)
+                ("LocationAutoDetectionAndCleanSettingsUi", TestLocationAutoDetectionAndCleanSettingsUi),
+                ("SettingsWindowExitWidgetAction", TestSettingsWindowExitWidgetAction)
             };
 
             int failures = 0;
@@ -2020,6 +2021,60 @@ namespace Dsk.Weather.Tests
                 {
                     Directory.Delete(tempDir, recursive: true);
                 }
+            }
+        }
+
+        private static void TestSettingsWindowExitWidgetAction()
+        {
+            Type settingsType = typeof(Dsk.Weather.Windows.SettingsWindow);
+            System.Reflection.BindingFlags flags =
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Public;
+            AssertTrue(settingsType.GetField("BtnResetPositionBottom", flags) is null, "BtnResetPositionBottom deve essere stato rimosso");
+            AssertTrue(settingsType.GetField("BtnRefreshWeatherBottom", flags) is null, "BtnRefreshWeatherBottom deve essere stato rimosso");
+            AssertTrue(settingsType.GetField("BtnCloseBottom", flags) is null, "BtnCloseBottom deve essere stato rimosso");
+
+            if (System.Windows.Application.Current is null)
+            {
+                var app = new Dsk.Weather.App();
+                app.InitializeComponent();
+            }
+
+            bool exitCalled = false;
+            var cfg = new WidgetSettings
+            {
+                Language = "it"
+            };
+            var win = new Dsk.Weather.Windows.SettingsWindow(
+                cfg,
+                new WeatherService(),
+                new AutostartService(),
+                _ => { },
+                () => { },
+                onExitApp: () => exitCalled = true);
+            try
+            {
+                AssertEqual("Chiudi completamente il widget", win.BtnExitWidgetText.Text, "Testo BtnExitWidget in italiano");
+                AssertEqual(
+                    "Termina Dsk.Weather e rimuove il widget dal desktop e dalla barra di sistema",
+                    win.BtnExitWidget.ToolTip as string,
+                    "Tooltip BtnExitWidget in italiano");
+
+                win.ApplyLanguage("en");
+                AssertEqual("Exit widget completely", win.BtnExitWidgetText.Text, "Testo BtnExitWidget in inglese");
+                AssertEqual(
+                    "Close Dsk.Weather and remove the widget from the desktop and system tray",
+                    win.BtnExitWidget.ToolTip as string,
+                    "Tooltip BtnExitWidget in inglese");
+
+                win.BtnExitWidget.RaiseEvent(
+                    new System.Windows.RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                AssertTrue(exitCalled, "Il click su BtnExitWidget deve invocare onExitApp");
+            }
+            finally
+            {
+                win.Close();
             }
         }
 
