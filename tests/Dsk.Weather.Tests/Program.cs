@@ -39,7 +39,8 @@ namespace Dsk.Weather.Tests
                 ("HourlyStripAcrossAllLayouts", TestHourlyStripAcrossAllLayouts),
                 ("ForecastDrawerDynamicAtmosphere", TestForecastDrawerDynamicAtmosphere),
                 ("MultiLanguageLocalizationAndSettings", TestMultiLanguageLocalizationAndSettings),
-                ("HourlyStripSunsetAndSunriseSlots", TestHourlyStripSunsetAndSunriseSlots)
+                ("HourlyStripSunsetAndSunriseSlots", TestHourlyStripSunsetAndSunriseSlots),
+                ("OfficialAlertsParsingAndMatching", TestOfficialAlertsParsingAndMatching)
             };
 
             int failures = 0;
@@ -998,6 +999,165 @@ namespace Dsk.Weather.Tests
             AssertEqual(8, slots[5].LocalTime.Hour, "Ora Alba");
             AssertEqual(10, slots[5].LocalTime.Minute, "Minuto Alba");
             AssertTrue(baseDay < slots[2].LocalTime, "Tramonto successivo alle 15:00");
+        }
+
+        private static void TestOfficialAlertsParsingAndMatching()
+        {
+            var baseNow = new DateTime(2026, 11, 20, 12, 0, 0);
+            DateTimeOffset refLocal = new DateTimeOffset(baseNow, TimeZoneInfo.Local.GetUtcOffset(baseNow));
+            string onsetActive = refLocal.AddHours(-1).ToString("O", CultureInfo.InvariantCulture);
+            string expiresFuture = refLocal.AddHours(6).ToString("O", CultureInfo.InvariantCulture);
+            string expiresPast = refLocal.AddHours(-1).ToString("O", CultureInfo.InvariantCulture);
+
+            string sampleAtom = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+              <entry>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT001</value></cap:geocode>
+                <cap:areaDesc>Calabria</cap:areaDesc>
+                <cap:event>Red Rain Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:areaDesc>Sardegna</cap:areaDesc>
+                <cap:event>Yellow Wind Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Moderate</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:areaDesc>Sardegna</cap:areaDesc>
+                <cap:event>Orange Coastal Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Severe</cap:severity>
+                <cap:status>Actual</cap:status>
+                <link type="application/cap+xml" href="https://feeds.meteoalarm.org/api/v1/warnings/sample-cap" />
+              </entry>
+              <entry>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:areaDesc>Sardegna</cap:areaDesc>
+                <cap:event>Red Thunderstorm Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresPast}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+            </feed>
+            """;
+
+            var sardegna = new OfficialAlertService.GeoRegionInfo(
+                CountryCode: "it",
+                IsoLvl4: "IT-88",
+                IsoLvl6: "IT-VS",
+                State: "Sardigna/Sardegna",
+                County: "Medio Campidano",
+                Province: string.Empty,
+                Municipality: string.Empty,
+                City: "Serramanna");
+
+            OfficialAlertService.MeteoAlarmMatch? match =
+                OfficialAlertService.ParseMeteoAlarmAtom(sampleAtom, sardegna, baseNow);
+            AssertTrue(match is not null, "Match Sardegna IT019 deve essere trovato");
+            AssertEqual(WeatherAlertLevel.Orange, match!.Level, "Allerta arancione non scaduta deve vincere su gialla");
+            AssertEqual("IT019", match.GeocodeId, "Geocode IT019");
+
+            string sampleCap = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+              <info>
+                <language>en-GB</language>
+                <event>Orange Wind Warning</event>
+                <onset>{onsetActive}</onset>
+                <expires>{expiresFuture}</expires>
+                <senderName>Italian Air Force National Meteorological Service</senderName>
+                <description>Strong winds on coasts (DISCLAIMER: test disclaimer omitted)</description>
+                <parameter><valueName>awareness_type</valueName><value>1; Wind</value></parameter>
+                <area><areaDesc>Sardegna</areaDesc></area>
+              </info>
+              <info>
+                <language>it-IT</language>
+                <event>Allerta Arancione Vento</event>
+                <onset>{onsetActive}</onset>
+                <expires>{expiresFuture}</expires>
+                <senderName>Servizio Meteorologico dell'Aeronautica Militare</senderName>
+                <description>Venti forti di maestrale sulla Sardegna. (DISCLAIMER: testo omesso)</description>
+                <parameter><valueName>awareness_type</valueName><value>1; Wind</value></parameter>
+                <area><areaDesc>Sardegna</areaDesc></area>
+              </info>
+            </alert>
+            """;
+
+            WeatherAlertInfo capIt = OfficialAlertService.BuildAlertFromCap(sampleCap, match, baseNow, "it");
+            AssertEqual(true, capIt.IsOfficial, "Flag IsOfficial true");
+            AssertEqual("ALLERTA VENTO", capIt.Title, "Titolo CAP vento IT");
+            AssertEqual(WeatherAlertLevel.Orange, capIt.Level, "Livello arancione CAP");
+            AssertTrue(capIt.SourceName.Contains("Aeronautica Militare", StringComparison.Ordinal), "Sender ufficiale IT estratto");
+            AssertTrue(!capIt.Description.Contains("DISCLAIMER", StringComparison.OrdinalIgnoreCase), "Disclaimer rimosso");
+
+            WeatherAlertInfo capEn = OfficialAlertService.BuildAlertFromCap(sampleCap, match, baseNow, "en");
+            AssertEqual("WIND ALERT", capEn.Title, "Titolo CAP vento EN");
+
+            string brightSkyJson = $$"""
+            {
+              "alerts": [
+                {
+                  "status": "actual",
+                  "onset": "{{onsetActive}}",
+                  "expires": "{{expiresFuture}}",
+                  "severity": "severe",
+                  "event_en": "wind gusts",
+                  "event_de": "STURMBÖEN",
+                  "description_en": "Severe wind gusts up to 90 km/h.",
+                  "description_de": "Es treten schwere Sturmböen bis 90 km/h auf."
+                }
+              ]
+            }
+            """;
+            WeatherAlertInfo? dwdAlert = OfficialAlertService.ParseBrightSkyJson(brightSkyJson, baseNow, "de");
+            AssertTrue(dwdAlert is not null && dwdAlert.IsOfficial, "BrightSky DWD ufficiale");
+            AssertEqual(WeatherAlertLevel.Orange, dwdAlert!.Level, "DWD severe -> Orange");
+            AssertEqual("WINDWARNUNG", dwdAlert.Title, "DWD titolo DE");
+            AssertTrue(dwdAlert.Description.Contains("Sturmböen", StringComparison.Ordinal), "DWD descrizione DE");
+
+            string nwsJson = $$"""
+            {
+              "features": [
+                {
+                  "properties": {
+                    "status": "Actual",
+                    "severity": "Extreme",
+                    "event": "Tornado Warning",
+                    "headline": "Tornado Warning issued for test area",
+                    "onset": "{{onsetActive}}",
+                    "expires": "{{expiresFuture}}"
+                  }
+                }
+              ]
+            }
+            """;
+            WeatherAlertInfo? nwsAlert = OfficialAlertService.ParseNwsJson(nwsJson, baseNow, "en");
+            AssertTrue(nwsAlert is not null && nwsAlert.IsOfficial, "NOAA NWS ufficiale");
+            AssertEqual(WeatherAlertLevel.Red, nwsAlert!.Level, "NWS Extreme -> Red");
+
+            // Verifica rete di sicurezza critica: vento moderato 50 km/h NON genera falsi allarmi se feed ufficiale dice 0 allerte
+            var moderateWind = new WeatherSnapshot { WeatherCode = 3, WindSpeedKmh = 30.0, WindGustsKmh = 50.0 };
+            AssertEqual(
+                WeatherAlertLevel.None,
+                WeatherService.EvaluateCriticalNowcastOnly(moderateWind, TemperatureUnit.Celsius, baseNow, "it").Level,
+                "Nowcast critico deve ignorare vento moderato 50 km/h");
+
+            var liveStorm = new WeatherSnapshot { WeatherCode = 95 };
+            AssertEqual(
+                WeatherAlertLevel.Red,
+                WeatherService.EvaluateCriticalNowcastOnly(liveStorm, TemperatureUnit.Celsius, baseNow, "it").Level,
+                "Nowcast critico segnala temporale WMO 95 in corso");
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

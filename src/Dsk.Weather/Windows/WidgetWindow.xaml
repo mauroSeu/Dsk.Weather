@@ -634,6 +634,58 @@
                                 Click="BtnCloseDrawer_Click" />
                     </Grid>
 
+                    <!-- Banner Allerta Meteo Ufficiale (visibile su tutti i layout quando c'è un'allerta attiva) -->
+                    <Border x:Name="DrawerAlertBanner"
+                            Visibility="Collapsed"
+                            CornerRadius="12"
+                            BorderThickness="1"
+                            Padding="9,6"
+                            Margin="0,0,0,7">
+                        <StackPanel Orientation="Vertical">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="DrawerAlertIcon"
+                                               Text="&#xE7BA;"
+                                               FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                               FontSize="11"
+                                               Margin="0,0,5,0"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock x:Name="DrawerAlertHeaderText"
+                                               FontFamily="Segoe UI Variable Display, Segoe UI"
+                                               FontSize="10.5"
+                                               FontWeight="Bold"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1"
+                                           x:Name="DrawerAlertTimeText"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="10"
+                                           FontWeight="SemiBold"
+                                           Margin="8,0,0,0"
+                                           Typography.NumeralAlignment="Tabular"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock x:Name="DrawerAlertBodyText"
+                                       FontFamily="Segoe UI Variable Text, Segoe UI"
+                                       FontSize="10.5"
+                                       TextWrapping="Wrap"
+                                       MaxHeight="34"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,2,0,0" />
+                            <TextBlock x:Name="DrawerAlertSourceText"
+                                       FontFamily="Segoe UI Variable Text, Segoe UI"
+                                       FontSize="9.5"
+                                       Opacity="0.82"
+                                       TextTrimming="CharacterEllipsis"
+                                       Margin="0,2,0,0" />
+                        </StackPanel>
+                    </Border>
+
                     <!-- Area Contenuto Fissa (308x238): Previsioni 7 giorni e Radar hanno la stessa identica forma -->
                     <Grid Width="308" Height="238">
                         <!-- Tab 1: Previsioni 7 giorni + chip dettagli -->

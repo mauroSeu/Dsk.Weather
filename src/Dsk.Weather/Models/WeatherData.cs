@@ -21,6 +21,7 @@ namespace Dsk.Weather.Models
     {
         None,
         Yellow,
+        Orange,
         Red
     }
 
@@ -28,7 +29,10 @@ namespace Dsk.Weather.Models
         WeatherAlertLevel Level,
         string Title,
         string Detail,
-        string Tooltip)
+        string Tooltip,
+        bool IsOfficial = false,
+        string SourceName = "",
+        string Description = "")
     {
         public static WeatherAlertInfo None { get; } = new WeatherAlertInfo(WeatherAlertLevel.None, string.Empty, string.Empty, string.Empty);
     }

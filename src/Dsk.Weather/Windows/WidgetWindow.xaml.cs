@@ -34,6 +34,7 @@ namespace Dsk.Weather.Windows
         private readonly MaterialColorService _colorService;
         private readonly DesktopPinService _pinService;
         private readonly AutostartService _autostartService;
+        private readonly OfficialAlertService _officialAlertService = new OfficialAlertService();
         private readonly Action _openSettingsAction;
         private readonly Action _exitAction;
 
@@ -43,6 +44,7 @@ namespace Dsk.Weather.Windows
 
         private WidgetSettings _settings;
         private WeatherSnapshot? _currentWeather;
+        private OfficialAlertFetchResult? _officialAlertResult;
         private MaterialThemePalette _currentPalette;
         private CancellationTokenSource? _weatherFetchCts;
 
@@ -207,10 +209,18 @@ namespace Dsk.Weather.Windows
         public void ApplySettings(WidgetSettings updated, bool refreshWeather)
         {
             bool pinChanged = _settings.PinMode != updated.PinMode;
-            bool themeOrLocationChanged =
-                _settings.ThemeMode != updated.ThemeMode ||
+            bool locationChanged =
                 Math.Abs(_settings.Latitude - updated.Latitude) > 0.0001 ||
                 Math.Abs(_settings.Longitude - updated.Longitude) > 0.0001;
+            bool themeOrLocationChanged =
+                _settings.ThemeMode != updated.ThemeMode ||
+                locationChanged;
+            bool languageChanged = !string.Equals(_settings.Language, updated.Language, StringComparison.OrdinalIgnoreCase);
+
+            if (locationChanged)
+            {
+                _officialAlertResult = null;
+            }
 
             _settings = updated.Clone();
             _settings.Normalize();
@@ -231,7 +241,7 @@ namespace Dsk.Weather.Windows
                 _ = ActivateRadarAsync();
             }
 
-            if (refreshWeather)
+            if (refreshWeather || (languageChanged && _settings.EnableWeatherAlerts))
             {
                 _ = RefreshWeatherAsync();
             }
@@ -304,17 +314,27 @@ namespace Dsk.Weather.Windows
             {
                 if (_currentWeather is null)
                 {
-                    CardSummaryText.Text = "Aggiornamento meteo...";
-                    MinimalSubText.Text = "Aggiornamento meteo...";
+                    string updatingText = LocalizationService.T(_settings.Language, "updating_weather");
+                    CardSummaryText.Text = updatingText;
+                    MinimalSubText.Text = updatingText;
                 }
 
                 string city = string.IsNullOrWhiteSpace(_settings.CityName) ? "Roma" : _settings.CityName;
-                WeatherSnapshot? result = await _weatherService.FetchForecastAsync(
+                Task<WeatherSnapshot?> weatherTask = _weatherService.FetchForecastAsync(
                     _settings.Latitude,
                     _settings.Longitude,
                     city,
                     WeatherModelPreference.Auto,
                     ct);
+
+                Task<OfficialAlertFetchResult> officialAlertTask = _settings.EnableWeatherAlerts
+                    ? SafeFetchOfficialAlertsAsync(_settings.Latitude, _settings.Longitude, _settings.Language, ct)
+                    : Task.FromResult(new OfficialAlertFetchResult(false, null));
+
+                await Task.WhenAll(weatherTask, officialAlertTask);
+
+                WeatherSnapshot? result = weatherTask.Result;
+                OfficialAlertFetchResult alertResult = officialAlertTask.Result;
 
                 if (ct.IsCancellationRequested || requestVersion != _weatherRequestVersion)
                 {
@@ -325,6 +345,7 @@ namespace Dsk.Weather.Windows
                 {
                     _currentWeather = result;
                 }
+                _officialAlertResult = alertResult;
 
                 ApplyThemeAndLayout();
                 UpdateWeatherDisplay();
@@ -1550,10 +1571,31 @@ namespace Dsk.Weather.Windows
             Dispatcher.BeginInvoke(DispatcherPriority.Background, _openSettingsAction);
         }
 
+        private async Task<OfficialAlertFetchResult> SafeFetchOfficialAlertsAsync(
+            double lat,
+            double lon,
+            string lang,
+            CancellationToken ct)
+        {
+            try
+            {
+                return await _officialAlertService.FetchOfficialAlertAsync(lat, lon, lang, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                return new OfficialAlertFetchResult(false, null);
+            }
+        }
+
         private void CardAlertBadge_Click(object sender, MouseButtonEventArgs e)
         {
             e.Handled = true;
-            OpenDrawer(radarTab: true);
+            bool showForecastDetailsFirst = DrawerAlertBanner.Visibility == Visibility.Visible;
+            OpenDrawer(radarTab: !showForecastDetailsFirst);
         }
 
         private void UpdateAlertBadge()
@@ -1561,42 +1603,104 @@ namespace Dsk.Weather.Windows
             if (!_settings.EnableWeatherAlerts)
             {
                 CardAlertBadge.Visibility = Visibility.Collapsed;
+                DrawerAlertBanner.Visibility = Visibility.Collapsed;
                 return;
             }
 
-            WeatherAlertInfo alert = WeatherService.EvaluateWeatherAlert(_currentWeather, _settings.TempUnit, DateTime.Now, _settings.Language);
+            string lang = _settings.Language;
+            WeatherAlertInfo alert;
+
+            if (_officialAlertResult is { ProviderAvailable: true })
+            {
+                if (_officialAlertResult.Alert is not null &&
+                    _officialAlertResult.Alert.Level != WeatherAlertLevel.None)
+                {
+                    alert = _officialAlertResult.Alert;
+                }
+                else
+                {
+                    // Il servizio meteorologico nazionale non segnala allerte: segnala solo emergenze critiche in corso adesso
+                    alert = WeatherService.EvaluateCriticalNowcastOnly(_currentWeather, _settings.TempUnit, DateTime.Now, lang);
+                }
+            }
+            else
+            {
+                // Fallback su stima Open-Meteo (paesi senza feed supportato o feed momentaneamente offline)
+                WeatherAlertInfo fallback = WeatherService.EvaluateWeatherAlert(_currentWeather, _settings.TempUnit, DateTime.Now, lang);
+                alert = fallback.Level == WeatherAlertLevel.None
+                    ? fallback
+                    : fallback with
+                    {
+                        SourceName = LocalizationService.T(lang, "alert_source_estimate"),
+                        Description = fallback.Tooltip
+                    };
+            }
 
             if (alert.Level == WeatherAlertLevel.None)
             {
                 CardAlertBadge.Visibility = Visibility.Collapsed;
+                DrawerAlertBanner.Visibility = Visibility.Collapsed;
                 return;
             }
 
             bool isLight = _settings.ThemeMode == WidgetThemeMode.MaterialLight;
-            bool isRed = alert.Level == WeatherAlertLevel.Red;
+            (Color bgColor, Color borderColor, Color accentFg) = alert.Level switch
+            {
+                WeatherAlertLevel.Red => (
+                    isLight ? Color.FromArgb(0x22, 0xDC, 0x26, 0x26) : Color.FromArgb(0x2E, 0xEF, 0x44, 0x44),
+                    isLight ? Color.FromRgb(0xDC, 0x26, 0x26) : Color.FromRgb(0xF8, 0x71, 0x71),
+                    isLight ? Color.FromRgb(0xB9, 0x1C, 0x1C) : Color.FromRgb(0xFC, 0xA5, 0xA5)),
+                WeatherAlertLevel.Orange => (
+                    isLight ? Color.FromArgb(0x24, 0xEA, 0x58, 0x0C) : Color.FromArgb(0x2C, 0xF9, 0x73, 0x16),
+                    isLight ? Color.FromRgb(0xEA, 0x58, 0x0C) : Color.FromRgb(0xFB, 0x92, 0x3C),
+                    isLight ? Color.FromRgb(0xC2, 0x41, 0x0C) : Color.FromRgb(0xFD, 0xBA, 0x74)),
+                _ => (
+                    isLight ? Color.FromArgb(0x24, 0xD9, 0x77, 0x06) : Color.FromArgb(0x29, 0xF5, 0x9E, 0x0B),
+                    isLight ? Color.FromRgb(0xD9, 0x77, 0x06) : Color.FromRgb(0xFB, 0xBF, 0x24),
+                    isLight ? Color.FromRgb(0xB4, 0x53, 0x09) : Color.FromRgb(0xFD, 0xE6, 0x8A))
+            };
 
-            Color bgColor = isRed
-                ? (isLight ? Color.FromArgb(0x22, 0xDC, 0x26, 0x26) : Color.FromArgb(0x2E, 0xEF, 0x44, 0x44))
-                : (isLight ? Color.FromArgb(0x24, 0xD9, 0x77, 0x06) : Color.FromArgb(0x29, 0xF5, 0x9E, 0x0B));
+            SolidColorBrush bgBrush = MaterialThemePalette.ToBrush(bgColor);
+            SolidColorBrush borderBrush = MaterialThemePalette.ToBrush(borderColor, 0.90);
+            SolidColorBrush accentBrush = MaterialThemePalette.ToBrush(accentFg);
+            SolidColorBrush onSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+            SolidColorBrush mutedBrush = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
 
-            Color borderColor = isRed
-                ? (isLight ? Color.FromRgb(0xDC, 0x26, 0x26) : Color.FromRgb(0xF8, 0x71, 0x71))
-                : (isLight ? Color.FromRgb(0xD9, 0x77, 0x06) : Color.FromRgb(0xFB, 0xBF, 0x24));
-
-            Color accentFg = isRed
-                ? (isLight ? Color.FromRgb(0xB9, 0x1C, 0x1C) : Color.FromRgb(0xFC, 0xA5, 0xA5))
-                : (isLight ? Color.FromRgb(0xB4, 0x53, 0x09) : Color.FromRgb(0xFD, 0xE6, 0x8A));
-
-            CardAlertBadge.Background = MaterialThemePalette.ToBrush(bgColor);
-            CardAlertBadge.BorderBrush = MaterialThemePalette.ToBrush(borderColor, 0.90);
-            CardAlertIcon.Foreground = MaterialThemePalette.ToBrush(accentFg);
-            CardAlertTitleText.Foreground = MaterialThemePalette.ToBrush(accentFg);
-            CardAlertDetailText.Foreground = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+            CardAlertBadge.Background = bgBrush;
+            CardAlertBadge.BorderBrush = borderBrush;
+            CardAlertIcon.Foreground = accentBrush;
+            CardAlertTitleText.Foreground = accentBrush;
+            CardAlertDetailText.Foreground = onSurfaceBrush;
 
             CardAlertTitleText.Text = alert.Title;
             CardAlertDetailText.Text = alert.Detail;
             CardAlertBadge.ToolTip = alert.Tooltip;
             CardAlertBadge.Visibility = Visibility.Visible;
+
+            // Banner descrittivo nel Drawer (visibile anche su Material Compatto e Minimal)
+            string levelKey = alert.Level switch
+            {
+                WeatherAlertLevel.Red => "alert_lvl_red",
+                WeatherAlertLevel.Orange => "alert_lvl_orange",
+                _ => "alert_lvl_yellow"
+            };
+            DrawerAlertBanner.Background = bgBrush;
+            DrawerAlertBanner.BorderBrush = borderBrush;
+            DrawerAlertIcon.Foreground = accentBrush;
+            DrawerAlertHeaderText.Foreground = accentBrush;
+            DrawerAlertTimeText.Foreground = accentBrush;
+            DrawerAlertBodyText.Foreground = onSurfaceBrush;
+            DrawerAlertSourceText.Foreground = mutedBrush;
+
+            DrawerAlertHeaderText.Text = $"{LocalizationService.T(lang, levelKey)} · {alert.Title}";
+            DrawerAlertTimeText.Text = alert.Detail;
+            DrawerAlertBodyText.Text = string.IsNullOrWhiteSpace(alert.Description) ? alert.Tooltip : alert.Description;
+            DrawerAlertSourceText.Text = alert.IsOfficial && !string.IsNullOrWhiteSpace(alert.SourceName)
+                ? LocalizationService.Format(lang, "alert_source_official", alert.SourceName)
+                : (string.IsNullOrWhiteSpace(alert.SourceName)
+                    ? LocalizationService.T(lang, "alert_source_estimate")
+                    : alert.SourceName);
+            DrawerAlertBanner.Visibility = Visibility.Visible;
         }
 
         private void UpdateQuickCitySwitchHints()
@@ -1626,6 +1730,7 @@ namespace Dsk.Weather.Windows
 
         private void SelectFavoriteLocation(SavedLocation target)
         {
+            _officialAlertResult = null;
             _settings.AddOrSelectLocation(target.Name, target.Country, target.Latitude, target.Longitude);
             _settingsService.Save(_settings);
             UpdateQuickCitySwitchHints();

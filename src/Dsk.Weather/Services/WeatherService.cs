@@ -529,6 +529,49 @@ namespace Dsk.Weather.Services
             return WeatherAlertInfo.None;
         }
 
+        public static WeatherAlertInfo EvaluateCriticalNowcastOnly(
+            WeatherSnapshot? w,
+            TemperatureUnit unit,
+            DateTime localNow,
+            string lang = "it")
+        {
+            if (w is null)
+            {
+                return WeatherAlertInfo.None;
+            }
+
+            string normalizedLang = LocalizationService.NormalizeLanguage(lang);
+            string nowLabel = LocalizationService.T(normalizedLang, "alert_now");
+            string estimateSource = LocalizationService.T(normalizedLang, "alert_source_estimate");
+
+            if (w.WeatherCode >= 95)
+            {
+                string title = LocalizationService.T(normalizedLang, w.WeatherCode >= 96 ? "alert_hail" : "alert_storm");
+                string msg = LocalizationService.Format(normalizedLang, "alert_red_storm_now", title);
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, nowLabel, msg, false, estimateSource, msg);
+            }
+
+            if (IsFreezingRainCode(w.WeatherCode))
+            {
+                string title = LocalizationService.T(normalizedLang, "alert_freezing_rain");
+                string msg = LocalizationService.T(normalizedLang, "alert_red_fr_now");
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, nowLabel, msg, false, estimateSource, msg);
+            }
+
+            if (w.WindGustsKmh >= 75.0)
+            {
+                string gustStr = $"{Math.Round(w.WindGustsKmh).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string title = LocalizationService.T(normalizedLang, "alert_strong_gusts");
+                string when = LocalizationService.T(normalizedLang, "alert_when_now");
+                string msg = LocalizationService.Format(normalizedLang, "alert_red_gusts", gustStr, when);
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, gustStr, msg, false, estimateSource, msg);
+            }
+
+            _ = unit;
+            _ = localNow;
+            return WeatherAlertInfo.None;
+        }
+
         public static string BuildForecastUrl(double lat, double lon, WeatherModelPreference model = WeatherModelPreference.Auto)
         {
             string latStr = lat.ToString("0.####", CultureInfo.InvariantCulture);
@@ -537,10 +580,11 @@ namespace Dsk.Weather.Services
             return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,wind_gusts_10m&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max,wind_gusts_10m_max&timezone=auto&forecast_days=7&models={modelParam}";
         }
 
-        public static string BuildGeocodingUrl(string query)
+        public static string BuildGeocodingUrl(string query, string lang = "it")
         {
             string escaped = Uri.EscapeDataString(query.Trim());
-            return $"https://geocoding-api.open-meteo.com/v1/search?name={escaped}&count=6&language=it&format=json";
+            string normalizedLang = LocalizationService.NormalizeLanguage(lang);
+            return $"https://geocoding-api.open-meteo.com/v1/search?name={escaped}&count=6&language={normalizedLang}&format=json";
         }
 
         public async Task<WeatherSnapshot?> FetchForecastAsync(
@@ -585,14 +629,14 @@ namespace Dsk.Weather.Services
             }
         }
 
-        public async Task<List<GeoLocationResult>> SearchCitiesAsync(string query, CancellationToken ct = default)
+        public async Task<List<GeoLocationResult>> SearchCitiesAsync(string query, string lang = "it", CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(query) || query.Trim().Length < 2)
             {
                 return new List<GeoLocationResult>();
             }
 
-            string url = BuildGeocodingUrl(query);
+            string url = BuildGeocodingUrl(query, lang);
             try
             {
                 using var response = await SharedHttpClient.GetAsync(url, ct).ConfigureAwait(false);

@@ -118,8 +118,14 @@ namespace Dsk.Weather
 
             menu.Opening += (_, _) =>
             {
+                string lang = _widgetWindow?.CurrentSettings.Language ?? _settings.Language;
+                centerItem.Text = LocalizationService.T(lang, "tray_center");
+                refreshItem.Text = LocalizationService.T(lang, "menu_refresh");
+                settingsItem.Text = LocalizationService.T(lang, "menu_settings");
+                exitItem.Text = LocalizationService.T(lang, "menu_exit");
                 if (_autostartTrayItem is not null)
                 {
+                    _autostartTrayItem.Text = LocalizationService.T(lang, "menu_autostart");
                     _autostartTrayItem.Checked = _autostartService.IsEnabled();
                 }
             };

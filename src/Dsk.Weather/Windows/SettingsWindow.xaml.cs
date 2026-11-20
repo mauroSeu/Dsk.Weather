@@ -348,39 +348,40 @@ namespace Dsk.Weather.Windows
 
         private async System.Threading.Tasks.Task ExecuteCitySearchAsync()
         {
+            string lang = _draft.Language;
             string query = CitySearchBox.Text.Trim();
             if (query.Length < 2)
             {
-                SearchStatusText.Text = "Inserisci almeno 2 caratteri per cercare una città.";
+                SearchStatusText.Text = LocalizationService.T(lang, "set_search_empty");
                 SearchStatusText.Visibility = Visibility.Visible;
                 CityResultsList.Visibility = Visibility.Collapsed;
                 return;
             }
 
             BtnSearchCity.IsEnabled = false;
-            SearchStatusText.Text = "Ricerca località in corso...";
+            SearchStatusText.Text = LocalizationService.T(lang, "set_search_loading");
             SearchStatusText.Visibility = Visibility.Visible;
             CityResultsList.Visibility = Visibility.Collapsed;
 
             try
             {
-                List<GeoLocationResult> results = await _weatherService.SearchCitiesAsync(query);
+                List<GeoLocationResult> results = await _weatherService.SearchCitiesAsync(query, lang);
                 if (results.Count == 0)
                 {
-                    SearchStatusText.Text = "Nessuna città trovata. Prova con un altro nome.";
+                    SearchStatusText.Text = LocalizationService.T(lang, "set_search_none");
                     CityResultsList.ItemsSource = null;
                     CityResultsList.Visibility = Visibility.Collapsed;
                 }
                 else
                 {
-                    SearchStatusText.Text = "Seleziona una località dalla lista:";
+                    SearchStatusText.Text = LocalizationService.T(lang, "set_search_select");
                     CityResultsList.ItemsSource = results;
                     CityResultsList.Visibility = Visibility.Visible;
                 }
             }
             catch
             {
-                SearchStatusText.Text = "Errore di connessione durante la ricerca.";
+                SearchStatusText.Text = LocalizationService.T(lang, "set_search_error");
             }
             finally
             {
@@ -399,7 +400,7 @@ namespace Dsk.Weather.Windows
 
             UpdateActiveLocationLabel();
             RefreshFavoritesUi();
-            SearchStatusText.Text = $"Aggiunta e impostata: {selected.DisplayName}.";
+            SearchStatusText.Text = LocalizationService.Format(_draft.Language, "set_city_added", selected.DisplayName);
             CityResultsList.Visibility = Visibility.Collapsed;
             AddLocationPanel.Visibility = Visibility.Collapsed;
 
@@ -408,9 +409,10 @@ namespace Dsk.Weather.Windows
 
         private async void BtnDetectIp_Click(object sender, RoutedEventArgs e)
         {
+            string lang = _draft.Language;
             BtnDetectIp.IsEnabled = false;
             AddLocationPanel.Visibility = Visibility.Visible;
-            SearchStatusText.Text = "Rilevamento posizione da IP in corso...";
+            SearchStatusText.Text = LocalizationService.T(lang, "set_ip_detecting");
             SearchStatusText.Visibility = Visibility.Visible;
 
             try
@@ -420,7 +422,7 @@ namespace Dsk.Weather.Windows
 
                 UpdateActiveLocationLabel();
                 RefreshFavoritesUi();
-                SearchStatusText.Text = $"Posizione rilevata: {detected.DisplayName}.";
+                SearchStatusText.Text = LocalizationService.Format(_draft.Language, "set_ip_detected", detected.DisplayName);
                 CityResultsList.Visibility = Visibility.Collapsed;
 
                 _onSettingsChanged(_draft);
@@ -440,18 +442,19 @@ namespace Dsk.Weather.Windows
         {
             BtnRefreshWeatherTop.IsEnabled = false;
             BtnRefreshWeatherBottom.IsEnabled = false;
-            BtnRefreshWeatherTop.Content = "↻ Aggiornamento...";
-            BtnRefreshWeatherBottom.Content = "↻ Aggiornamento...";
+            string refreshingText = LocalizationService.T(_draft.Language, "set_refreshing");
+            BtnRefreshWeatherTop.Content = refreshingText;
+            BtnRefreshWeatherBottom.Content = refreshingText;
             try
             {
                 await _onRefreshWeatherAsync();
                 SearchStatusText.Visibility = Visibility.Visible;
-                SearchStatusText.Text = $"Meteo aggiornato alle {DateTime.Now:HH:mm:ss}.";
+                SearchStatusText.Text = LocalizationService.Format(_draft.Language, "set_updated_at", DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
             }
             finally
             {
-                BtnRefreshWeatherTop.Content = "↻ Ricarica";
-                BtnRefreshWeatherBottom.Content = "↻ Ricarica meteo";
+                BtnRefreshWeatherTop.Content = LocalizationService.T(_draft.Language, "set_btn_refresh_short");
+                BtnRefreshWeatherBottom.Content = LocalizationService.T(_draft.Language, "set_btn_refresh");
                 BtnRefreshWeatherTop.IsEnabled = true;
                 BtnRefreshWeatherBottom.IsEnabled = true;
             }
@@ -524,8 +527,11 @@ namespace Dsk.Weather.Windows
             Title = $"Dsk.Weather — {LocalizationService.T(lang, "set_title")}";
             HeaderTitleText.Text = LocalizationService.T(lang, "set_title");
             HeaderSubtitleText.Text = LocalizationService.T(lang, "set_subtitle");
+            BtnHeaderClose.ToolTip = LocalizationService.T(lang, "set_btn_close_tip");
             SecLocationsTitle.Text = LocalizationService.T(lang, "set_sec_locations");
             ActiveLocationCaption.Text = LocalizationService.T(lang, "set_active_city");
+            BtnRefreshWeatherTop.Content = LocalizationService.T(lang, "set_btn_refresh_short");
+            BtnDetectIp.Content = LocalizationService.T(lang, "set_btn_detect_ip");
             FavoritesHintText.Text = LocalizationService.T(lang, "set_saved_cities");
             BtnAddLocation.Content = LocalizationService.T(lang, "set_add_location");
             BtnSearchCity.Content = LocalizationService.T(lang, "set_btn_search");

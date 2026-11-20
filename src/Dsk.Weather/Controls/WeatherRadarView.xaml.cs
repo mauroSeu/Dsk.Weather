@@ -60,7 +60,9 @@ namespace Dsk.Weather.Controls
             LegendText.Text = LocalizationService.T(_language, "radar_legend");
             MapFrameBorder.ToolTip = LocalizationService.T(_language, "radar_map_tooltip");
             BtnPlayPause.ToolTip = LocalizationService.T(_language, "radar_play_tooltip");
-            BtnMapThemeToggle.ToolTip = LocalizationService.T(_language, "radar_theme_tooltip");
+            BtnMapThemeToggle.ToolTip = LocalizationService.T(
+                _language,
+                _darkMapMode ? "radar_theme_dark_tip" : "radar_theme_light_tip");
             BtnZoomToggle.ToolTip = LocalizationService.T(_language, "radar_zoom_tooltip");
             BtnRefreshRadar.ToolTip = LocalizationService.T(_language, "radar_refresh_tooltip");
             CityPinLabel.Text = string.IsNullOrWhiteSpace(_cityName)
@@ -95,9 +97,9 @@ namespace Dsk.Weather.Controls
             CrosshairH.Stroke = crosshairBrush;
             CrosshairV.Stroke = crosshairBrush;
 
-            BtnMapThemeToggle.ToolTip = _darkMapMode
-                ? "Mappa Notturna Scura attiva (auto dal tramonto all'alba) · Clicca per passare alla Chiara"
-                : "Mappa Diurna Chiara attiva (auto dall'alba al tramonto) · Clicca per passare alla Scura";
+            BtnMapThemeToggle.ToolTip = LocalizationService.T(
+                _language,
+                _darkMapMode ? "radar_theme_dark_tip" : "radar_theme_light_tip");
 
             TimestampText.Foreground = textBrush;
             LegendText.Foreground = mutedBrush;
@@ -280,9 +282,9 @@ namespace Dsk.Weather.Controls
             }
             catch
             {
-                StatusOverlayText.Text = "Errore caricamento radar";
+                StatusOverlayText.Text = LocalizationService.T(_language, "radar_error");
                 StatusOverlay.Visibility = Visibility.Visible;
-                TimestampText.Text = "Errore rete";
+                TimestampText.Text = LocalizationService.T(_language, "radar_net_error");
             }
             finally
             {
@@ -422,7 +424,7 @@ namespace Dsk.Weather.Controls
             if (info.IsForecast)
             {
                 int minsAhead = Math.Max(5, (int)Math.Round((info.TimestampUtc - _frameInfos[lastPastIdx].TimestampUtc).TotalMinutes));
-                TimestampText.Text = $"{localTs.ToString("HH:mm", CultureInfo.InvariantCulture)} (+{minsAhead}m Prev.)";
+                TimestampText.Text = $"{localTs.ToString("HH:mm", CultureInfo.InvariantCulture)} (+{minsAhead}m {LocalizationService.T(_language, "radar_prev_short")})";
             }
             else if (index == lastPastIdx)
             {
