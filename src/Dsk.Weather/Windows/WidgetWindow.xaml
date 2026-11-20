@@ -498,32 +498,48 @@
                                                                    FontSize="11"
                                                                    Typography.NumeralAlignment="Tabular"
                                                                    HorizontalAlignment="Center" />
-                                                        <controls:WeatherIconView Width="20"
-                                                                                  Height="20"
-                                                                                  WeatherCode="{Binding WeatherCode}"
-                                                                                  IsDay="{Binding IsDay}"
-                                                                                  Margin="0,2,0,1"
-                                                                                  HorizontalAlignment="Center" />
-                                                        <StackPanel Orientation="Horizontal"
-                                                                    Height="12"
-                                                                    HorizontalAlignment="Center"
-                                                                    VerticalAlignment="Center"
-                                                                    Visibility="{Binding PrecipVisibility}">
-                                                            <Path Data="M 4,0 C 4,0 8,4.6 8,7.2 A 4,4 0 1 1 0,7.2 C 0,4.6 4,0 4,0 Z"
-                                                                  Width="6.5"
-                                                                  Height="8.5"
-                                                                  Stretch="Fill"
-                                                                  Fill="{Binding PrecipBrush}"
-                                                                  VerticalAlignment="Center"
-                                                                  Margin="0,0,2.5,0" />
-                                                            <TextBlock Text="{Binding PrecipLabel}"
-                                                                       Foreground="{Binding PrecipBrush}"
+                                                        <Grid Height="20" Margin="0,2,0,1" HorizontalAlignment="Center">
+                                                            <controls:WeatherIconView Width="20"
+                                                                                      Height="20"
+                                                                                      WeatherCode="{Binding WeatherCode}"
+                                                                                      IsDay="{Binding IsDay}"
+                                                                                      Visibility="{Binding WeatherIconVisibility}" />
+                                                            <Canvas Width="20" Height="20" Visibility="{Binding SolarIconVisibility}">
+                                                                <Path Data="M 4.5,14 A 5.5,5.5 0 0 1 15.5,14 Z" Fill="#FBBF24" />
+                                                                <Line X1="2.5" Y1="14.5" X2="17.5" Y2="14.5" Stroke="#F59E0B" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                                <Path Data="{Binding SolarArrowData}" Stroke="#FDE68A" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                                            </Canvas>
+                                                        </Grid>
+                                                        <Grid Height="12" HorizontalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal"
+                                                                        Height="12"
+                                                                        HorizontalAlignment="Center"
+                                                                        VerticalAlignment="Center"
+                                                                        Visibility="{Binding PrecipVisibility}">
+                                                                <Path Data="M 4,0 C 4,0 8,4.6 8,7.2 A 4,4 0 1 1 0,7.2 C 0,4.6 4,0 4,0 Z"
+                                                                      Width="6.5"
+                                                                      Height="8.5"
+                                                                      Stretch="Fill"
+                                                                      Fill="{Binding PrecipBrush}"
+                                                                      VerticalAlignment="Center"
+                                                                      Margin="0,0,2.5,0" />
+                                                                <TextBlock Text="{Binding PrecipLabel}"
+                                                                           Foreground="{Binding PrecipBrush}"
+                                                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                                                           FontSize="9.5"
+                                                                           FontWeight="SemiBold"
+                                                                           Typography.NumeralAlignment="Tabular"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding SolarLabel}"
+                                                                       Foreground="{Binding SolarLabelBrush}"
                                                                        FontFamily="Segoe UI Variable Text, Segoe UI"
-                                                                       FontSize="9.5"
+                                                                       FontSize="9"
                                                                        FontWeight="SemiBold"
-                                                                       Typography.NumeralAlignment="Tabular"
-                                                                       VerticalAlignment="Center" />
-                                                        </StackPanel>
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       Visibility="{Binding SolarIconVisibility}" />
+                                                        </Grid>
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>

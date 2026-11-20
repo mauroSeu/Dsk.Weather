@@ -837,18 +837,46 @@ namespace Dsk.Weather.Windows
             Color sparkPrimaryColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.Primary;
             Color sparkTextColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.OnSurface;
             Color sparkDotStrokeColor = isMinimal ? Color.FromRgb(0x0F, 0x17, 0x2A) : _currentPalette.Surface;
+            bool isLightTheme = !isMinimal && _settings.ThemeMode == WidgetThemeMode.MaterialLight;
+            SolidColorBrush solarBrush = MaterialThemePalette.ToBrush(
+                isLightTheme ? Color.FromRgb(0xD9, 0x77, 0x06) : Color.FromRgb(0xFB, 0xBF, 0x24));
 
-            var hourlyVms = new List<HourlyItemViewModel>(_currentWeather.NextHours.Count);
-            foreach (HourlyForecastPoint hp in _currentWeather.NextHours)
+            List<HourlyStripSlot> slots = BuildHourlyStripSlots(_currentWeather);
+            var hourlyVms = new List<HourlyItemViewModel>(slots.Count);
+            foreach (HourlyStripSlot slot in slots)
             {
+                string dateLabel = slot.LocalTime.Date > DateTime.Now.Date
+                    ? CapitalizeFirst(slot.LocalTime.ToString("ddd dd/MM", culture), culture) + " · "
+                    : string.Empty;
+                string hhmm = slot.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+                if (slot.Kind != HourlySlotKind.Forecast)
+                {
+                    bool isSunset = slot.Kind == HourlySlotKind.Sunset;
+                    string shortLabel = LocalizationService.T(lang, isSunset ? "sun_sunset_short" : "sun_sunrise_short");
+                    string fullLabel = LocalizationService.T(lang, isSunset ? "sun_sunset_full" : "sun_sunrise_full");
+                    hourlyVms.Add(new HourlyItemViewModel
+                    {
+                        HourLabel = hhmm,
+                        HourBrush = solarBrush,
+                        WeatherIconVisibility = Visibility.Collapsed,
+                        SolarIconVisibility = Visibility.Visible,
+                        PrecipVisibility = Visibility.Collapsed,
+                        SolarLabel = shortLabel,
+                        SolarLabelBrush = solarBrush,
+                        SolarArrowData = isSunset
+                            ? "M 10,3 L 10,8.5 M 7.5,6 L 10,8.5 L 12.5,6"
+                            : "M 10,8.5 L 10,3 M 7.5,5.5 L 10,3 L 12.5,5.5",
+                        TooltipText = $"{dateLabel}{hhmm} · {fullLabel}"
+                    });
+                    continue;
+                }
+
+                HourlyForecastPoint hp = slot.Forecast!;
                 bool isMidnight = hp.LocalTime.Hour == 0;
                 bool showHourlyPrecip = hp.PrecipProbability >= 20;
                 string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode, lang);
                 string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg, lang);
-                string dateLabel = hp.LocalTime.Date > DateTime.Now.Date
-                    ? CapitalizeFirst(hp.LocalTime.ToString("ddd dd/MM", culture), culture) + " · "
-                    : string.Empty;
-                string hhmm = hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 string windRounded = Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture);
 
                 hourlyVms.Add(new HourlyItemViewModel
@@ -856,6 +884,8 @@ namespace Dsk.Weather.Windows
                     HourLabel = hhmm,
                     PrecipLabel = showHourlyPrecip ? $"{hp.PrecipProbability}%" : string.Empty,
                     PrecipVisibility = showHourlyPrecip ? Visibility.Visible : Visibility.Hidden,
+                    WeatherIconVisibility = Visibility.Visible,
+                    SolarIconVisibility = Visibility.Collapsed,
                     TooltipText = LocalizationService.Format(lang, "hourly_tooltip", dateLabel, hhmm, condText, hp.PrecipProbability, windRounded, hrCardinal),
                     WeatherCode = hp.WeatherCode,
                     IsDay = hp.IsDay,
@@ -865,7 +895,7 @@ namespace Dsk.Weather.Windows
             }
 
             CardHourlyItems.ItemsSource = hourlyVms;
-            RenderHourlySparkline(_currentWeather.NextHours, _settings.TempUnit, sparkPrimaryColor, sparkTextColor, sparkDotStrokeColor);
+            RenderHourlySparkline(slots, _settings.TempUnit, sparkPrimaryColor, sparkTextColor, sparkDotStrokeColor);
 
             if (resetScroll)
             {
@@ -878,15 +908,98 @@ namespace Dsk.Weather.Windows
             Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(UpdateHourlyScrollIndicators));
         }
 
+        internal static List<HourlyStripSlot> BuildHourlyStripSlots(WeatherSnapshot weather)
+        {
+            var result = new List<HourlyStripSlot>();
+            if (weather?.NextHours is null || weather.NextHours.Count == 0)
+            {
+                return result;
+            }
+
+            List<HourlyForecastPoint> hours = weather.NextHours;
+            DateTime windowStart = hours[0].LocalTime.AddMinutes(-59);
+            DateTime windowEnd = hours[hours.Count - 1].LocalTime.AddMinutes(30);
+
+            var solarEvents = new List<(DateTime Time, HourlySlotKind Kind)>();
+            void TryAddSolar(DateTime? dt, HourlySlotKind kind)
+            {
+                if (!dt.HasValue) return;
+                DateTime val = dt.Value;
+                if (val < windowStart || val > windowEnd) return;
+                foreach ((DateTime existing, HourlySlotKind existingKind) in solarEvents)
+                {
+                    if (existingKind == kind && Math.Abs((existing - val).TotalMinutes) < 5.0)
+                    {
+                        return;
+                    }
+                }
+                solarEvents.Add((val, kind));
+            }
+
+            if (weather.Daily is not null)
+            {
+                foreach (DailyForecastPoint dp in weather.Daily)
+                {
+                    TryAddSolar(dp.SunriseLocal, HourlySlotKind.Sunrise);
+                    TryAddSolar(dp.SunsetLocal, HourlySlotKind.Sunset);
+                }
+            }
+            TryAddSolar(weather.SunriseLocal, HourlySlotKind.Sunrise);
+            TryAddSolar(weather.SunsetLocal, HourlySlotKind.Sunset);
+            solarEvents.Sort((a, b) => a.Time.CompareTo(b.Time));
+
+            int solarIdx = 0;
+            for (int i = 0; i < hours.Count; i++)
+            {
+                HourlyForecastPoint current = hours[i];
+                while (solarIdx < solarEvents.Count && solarEvents[solarIdx].Time <= current.LocalTime)
+                {
+                    (DateTime sTime, HourlySlotKind sKind) = solarEvents[solarIdx++];
+                    double interpTemp = InterpolateTempAt(hours, i, sTime);
+                    result.Add(new HourlyStripSlot(sKind, sTime, interpTemp, null));
+                }
+
+                result.Add(new HourlyStripSlot(HourlySlotKind.Forecast, current.LocalTime, current.TemperatureC, current));
+            }
+
+            while (solarIdx < solarEvents.Count)
+            {
+                (DateTime sTime, HourlySlotKind sKind) = solarEvents[solarIdx++];
+                double tailTemp = hours[hours.Count - 1].TemperatureC;
+                result.Add(new HourlyStripSlot(sKind, sTime, tailTemp, null));
+            }
+
+            return result;
+        }
+
+        private static double InterpolateTempAt(List<HourlyForecastPoint> hours, int nextIndex, DateTime targetTime)
+        {
+            if (nextIndex <= 0)
+            {
+                return hours[0].TemperatureC;
+            }
+
+            HourlyForecastPoint prev = hours[nextIndex - 1];
+            HourlyForecastPoint next = hours[nextIndex];
+            double totalMins = (next.LocalTime - prev.LocalTime).TotalMinutes;
+            if (totalMins <= 0.1)
+            {
+                return next.TemperatureC;
+            }
+
+            double ratio = Math.Clamp((targetTime - prev.LocalTime).TotalMinutes / totalMins, 0.0, 1.0);
+            return prev.TemperatureC + ((next.TemperatureC - prev.TemperatureC) * ratio);
+        }
+
         private void RenderHourlySparkline(
-            List<HourlyForecastPoint> hours,
+            IReadOnlyList<HourlyStripSlot> slots,
             TemperatureUnit unit,
             Color primaryColor,
             Color textColor,
             Color surfaceColor)
         {
             HourlySparklineCanvas.Children.Clear();
-            if (hours is null || hours.Count == 0)
+            if (slots is null || slots.Count == 0)
             {
                 HourlySparklineCanvas.Width = 0;
                 return;
@@ -897,16 +1010,16 @@ namespace Dsk.Weather.Windows
             const double topDotY = 16.5;
             const double bottomDotY = 28.5;
 
-            int count = hours.Count;
+            int count = slots.Count;
             double totalWidth = count * colWidth;
             HourlySparklineCanvas.Width = totalWidth;
 
             double minT = double.MaxValue;
             double maxT = double.MinValue;
-            foreach (HourlyForecastPoint hp in hours)
+            foreach (HourlyStripSlot slot in slots)
             {
-                if (hp.TemperatureC < minT) minT = hp.TemperatureC;
-                if (hp.TemperatureC > maxT) maxT = hp.TemperatureC;
+                if (slot.TemperatureC < minT) minT = slot.TemperatureC;
+                if (slot.TemperatureC > maxT) maxT = slot.TemperatureC;
             }
 
             double span = maxT - minT;
@@ -914,7 +1027,7 @@ namespace Dsk.Weather.Windows
             for (int i = 0; i < count; i++)
             {
                 double cx = (i * colWidth) + (colWidth / 2.0);
-                double norm = span < 0.3 ? 0.5 : (hours[i].TemperatureC - minT) / span;
+                double norm = span < 0.3 ? 0.5 : (slots[i].TemperatureC - minT) / span;
                 double cy = bottomDotY - (norm * (bottomDotY - topDotY));
                 points[i] = new Point(cx, cy);
             }
@@ -969,6 +1082,7 @@ namespace Dsk.Weather.Windows
             }
 
             SolidColorBrush dotFill = MaterialThemePalette.ToBrush(primaryColor);
+            SolidColorBrush solarDotFill = MaterialThemePalette.ToBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
             SolidColorBrush dotStroke = MaterialThemePalette.ToBrush(surfaceColor);
             SolidColorBrush labelBrush = MaterialThemePalette.ToBrush(textColor);
             var fontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI");
@@ -976,10 +1090,11 @@ namespace Dsk.Weather.Windows
             for (int i = 0; i < count; i++)
             {
                 Point pt = points[i];
+                bool isSolar = slots[i].Kind != HourlySlotKind.Forecast;
 
                 var label = new TextBlock
                 {
-                    Text = WeatherService.FormatTemp(hours[i].TemperatureC, unit),
+                    Text = WeatherService.FormatTemp(slots[i].TemperatureC, unit),
                     Width = colWidth,
                     TextAlignment = TextAlignment.Center,
                     FontFamily = fontFamily,
@@ -991,16 +1106,17 @@ namespace Dsk.Weather.Windows
                 Canvas.SetTop(label, pt.Y - 16.0);
                 HourlySparklineCanvas.Children.Add(label);
 
+                double dotSize = isSolar ? 6.2 : 5.2;
                 var dot = new Ellipse
                 {
-                    Width = 5.2,
-                    Height = 5.2,
-                    Fill = dotFill,
+                    Width = dotSize,
+                    Height = dotSize,
+                    Fill = isSolar ? solarDotFill : dotFill,
                     Stroke = dotStroke,
                     StrokeThickness = 1.2
                 };
-                Canvas.SetLeft(dot, pt.X - 2.6);
-                Canvas.SetTop(dot, pt.Y - 2.6);
+                Canvas.SetLeft(dot, pt.X - (dotSize / 2.0));
+                Canvas.SetTop(dot, pt.Y - (dotSize / 2.0));
                 HourlySparklineCanvas.Children.Add(dot);
             }
         }
@@ -1640,11 +1756,29 @@ namespace Dsk.Weather.Windows
             return char.ToUpper(input[0], culture) + input.Substring(1);
         }
 
+        internal enum HourlySlotKind
+        {
+            Forecast,
+            Sunrise,
+            Sunset
+        }
+
+        internal sealed record HourlyStripSlot(
+            HourlySlotKind Kind,
+            DateTime LocalTime,
+            double TemperatureC,
+            HourlyForecastPoint? Forecast);
+
         private sealed class HourlyItemViewModel
         {
             public string HourLabel { get; init; } = string.Empty;
             public string PrecipLabel { get; init; } = string.Empty;
             public Visibility PrecipVisibility { get; init; } = Visibility.Hidden;
+            public Visibility WeatherIconVisibility { get; init; } = Visibility.Visible;
+            public Visibility SolarIconVisibility { get; init; } = Visibility.Collapsed;
+            public string SolarLabel { get; init; } = string.Empty;
+            public Brush SolarLabelBrush { get; init; } = Brushes.Gold;
+            public string SolarArrowData { get; init; } = string.Empty;
             public string TooltipText { get; init; } = string.Empty;
             public int WeatherCode { get; init; }
             public bool IsDay { get; init; }

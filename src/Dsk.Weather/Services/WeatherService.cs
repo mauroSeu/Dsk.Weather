@@ -781,6 +781,15 @@ namespace Dsk.Weather.Services
                     }
 
                     double dayWind = i < maxWinds.Count ? maxWinds[i] : snapshot.WindSpeedKmh;
+                    DateTime? daySunrise = i < sunrises.Count &&
+                        DateTime.TryParseExact(sunrises[i], "yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDaySunrise)
+                        ? parsedDaySunrise
+                        : null;
+                    DateTime? daySunset = i < sunsets.Count &&
+                        DateTime.TryParseExact(sunsets[i], "yyyy-MM-dd'T'HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime parsedDaySunset)
+                        ? parsedDaySunset
+                        : null;
+
                     var dayPoint = new DailyForecastPoint
                     {
                         Date = parsedDate,
@@ -790,7 +799,9 @@ namespace Dsk.Weather.Services
                         PrecipProbabilityMax = i < probs.Count ? probs[i] : 0,
                         WindSpeedMaxKmh = dayWind,
                         WindGustsMaxKmh = i < maxGusts.Count ? maxGusts[i] : dayWind,
-                        WindDirectionDeg = i < windDirs.Count ? windDirs[i] : snapshot.WindDirectionDeg
+                        WindDirectionDeg = i < windDirs.Count ? windDirs[i] : snapshot.WindDirectionDeg,
+                        SunriseLocal = daySunrise,
+                        SunsetLocal = daySunset
                     };
                     snapshot.Daily.Add(dayPoint);
                 }

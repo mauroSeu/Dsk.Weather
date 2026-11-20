@@ -81,6 +81,8 @@ namespace Dsk.Weather.Models
         public double WindSpeedMaxKmh { get; set; }
         public double WindGustsMaxKmh { get; set; }
         public int WindDirectionDeg { get; set; }
+        public DateTime? SunriseLocal { get; set; }
+        public DateTime? SunsetLocal { get; set; }
     }
 
     public sealed class GeoLocationResult

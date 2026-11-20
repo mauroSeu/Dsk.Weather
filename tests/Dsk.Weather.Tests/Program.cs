@@ -38,7 +38,8 @@ namespace Dsk.Weather.Tests
                 ("DefaultStyleCheckAndResetHelper", TestDefaultStyleCheckAndReset),
                 ("HourlyStripAcrossAllLayouts", TestHourlyStripAcrossAllLayouts),
                 ("ForecastDrawerDynamicAtmosphere", TestForecastDrawerDynamicAtmosphere),
-                ("MultiLanguageLocalizationAndSettings", TestMultiLanguageLocalizationAndSettings)
+                ("MultiLanguageLocalizationAndSettings", TestMultiLanguageLocalizationAndSettings),
+                ("HourlyStripSunsetAndSunriseSlots", TestHourlyStripSunsetAndSunriseSlots)
             };
 
             int failures = 0;
@@ -938,6 +939,54 @@ namespace Dsk.Weather.Tests
                     Directory.Delete(tempDir, recursive: true);
                 }
             }
+        }
+
+        private static void TestHourlyStripSunsetAndSunriseSlots()
+        {
+            var baseDay = new DateTime(2026, 11, 20, 15, 0, 0);
+            var snapshot = new WeatherSnapshot
+            {
+                SunriseLocal = new DateTime(2026, 11, 20, 8, 8, 0),
+                SunsetLocal = new DateTime(2026, 11, 20, 16, 30, 0),
+                NextHours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = new DateTime(2026, 11, 20, 15, 0, 0), TemperatureC = 10.0 },
+                    new() { LocalTime = new DateTime(2026, 11, 20, 16, 0, 0), TemperatureC = 9.0 },
+                    new() { LocalTime = new DateTime(2026, 11, 20, 17, 0, 0), TemperatureC = 7.0 },
+                    new() { LocalTime = new DateTime(2026, 11, 21, 8, 0, 0), TemperatureC = 4.0 },
+                    new() { LocalTime = new DateTime(2026, 11, 21, 9, 0, 0), TemperatureC = 6.0 }
+                },
+                Daily = new List<DailyForecastPoint>
+                {
+                    new()
+                    {
+                        Date = new DateTime(2026, 11, 20),
+                        SunriseLocal = new DateTime(2026, 11, 20, 8, 8, 0),
+                        SunsetLocal = new DateTime(2026, 11, 20, 16, 30, 0)
+                    },
+                    new()
+                    {
+                        Date = new DateTime(2026, 11, 21),
+                        SunriseLocal = new DateTime(2026, 11, 21, 8, 10, 0),
+                        SunsetLocal = new DateTime(2026, 11, 21, 16, 29, 0)
+                    }
+                }
+            };
+
+            List<Dsk.Weather.Windows.WidgetWindow.HourlyStripSlot> slots =
+                Dsk.Weather.Windows.WidgetWindow.BuildHourlyStripSlots(snapshot);
+
+            AssertEqual(7, slots.Count, "5 ore + Tramonto oggi + Alba domani");
+            AssertEqual(Dsk.Weather.Windows.WidgetWindow.HourlySlotKind.Forecast, slots[1].Kind, "Slot 1 deve essere 16:00");
+            AssertEqual(Dsk.Weather.Windows.WidgetWindow.HourlySlotKind.Sunset, slots[2].Kind, "Slot 2 deve essere Tramonto 16:30");
+            AssertEqual(16, slots[2].LocalTime.Hour, "Ora Tramonto");
+            AssertEqual(30, slots[2].LocalTime.Minute, "Minuto Tramonto");
+            AssertTrue(Math.Abs(slots[2].TemperatureC - 8.0) < 0.01, "Temperatura interpolata Tramonto 16:30 deve essere 8.0°C");
+
+            AssertEqual(Dsk.Weather.Windows.WidgetWindow.HourlySlotKind.Sunrise, slots[5].Kind, "Slot 5 deve essere Alba 08:10");
+            AssertEqual(8, slots[5].LocalTime.Hour, "Ora Alba");
+            AssertEqual(10, slots[5].LocalTime.Minute, "Minuto Alba");
+            AssertTrue(baseDay < slots[2].LocalTime, "Tramonto successivo alle 15:00");
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)
