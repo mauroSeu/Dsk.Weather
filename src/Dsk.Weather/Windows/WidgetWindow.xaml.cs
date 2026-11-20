@@ -1627,11 +1627,14 @@ namespace Dsk.Weather.Windows
             {
                 // Fallback su stima Open-Meteo (paesi senza feed supportato o feed momentaneamente offline)
                 WeatherAlertInfo fallback = WeatherService.EvaluateWeatherAlert(_currentWeather, _settings.TempUnit, DateTime.Now, lang);
+                string fallbackSourceKey = _officialAlertResult?.SourceStatus == AlertSourceStatus.Fallback
+                    ? "alert_source_fallback"
+                    : "alert_source_estimate";
                 alert = fallback.Level == WeatherAlertLevel.None
                     ? fallback
                     : fallback with
                     {
-                        SourceName = LocalizationService.T(lang, "alert_source_estimate"),
+                        SourceName = LocalizationService.T(lang, fallbackSourceKey),
                         Description = fallback.Tooltip
                     };
             }
@@ -1666,6 +1669,20 @@ namespace Dsk.Weather.Windows
             SolidColorBrush onSurfaceBrush = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
             SolidColorBrush mutedBrush = MaterialThemePalette.ToBrush(_currentPalette.OnSurfaceMuted);
 
+            string certaintySuffix = string.Empty;
+            if (string.Equals(alert.Certainty, "Observed", StringComparison.OrdinalIgnoreCase))
+            {
+                certaintySuffix = $" · {LocalizationService.T(lang, "alert_certainty_observed")}";
+            }
+            else if (string.Equals(alert.Certainty, "Possible", StringComparison.OrdinalIgnoreCase))
+            {
+                certaintySuffix = $" · {LocalizationService.T(lang, "alert_certainty_possible")}";
+            }
+
+            string tooltipText = string.IsNullOrWhiteSpace(certaintySuffix)
+                ? alert.Tooltip
+                : $"{alert.Tooltip}{certaintySuffix}";
+
             CardAlertBadge.Background = bgBrush;
             CardAlertBadge.BorderBrush = borderBrush;
             CardAlertIcon.Foreground = accentBrush;
@@ -1674,7 +1691,7 @@ namespace Dsk.Weather.Windows
 
             CardAlertTitleText.Text = alert.Title;
             CardAlertDetailText.Text = alert.Detail;
-            CardAlertBadge.ToolTip = alert.Tooltip;
+            CardAlertBadge.ToolTip = tooltipText;
             CardAlertBadge.Visibility = Visibility.Visible;
 
             // Banner descrittivo nel Drawer (visibile anche su Material Compatto e Minimal)
@@ -1695,11 +1712,17 @@ namespace Dsk.Weather.Windows
             DrawerAlertHeaderText.Text = $"{LocalizationService.T(lang, levelKey)} · {alert.Title}";
             DrawerAlertTimeText.Text = alert.Detail;
             DrawerAlertBodyText.Text = string.IsNullOrWhiteSpace(alert.Description) ? alert.Tooltip : alert.Description;
-            DrawerAlertSourceText.Text = alert.IsOfficial && !string.IsNullOrWhiteSpace(alert.SourceName)
-                ? LocalizationService.Format(lang, "alert_source_official", alert.SourceName)
+            string sourceLine = alert.IsOfficial && !string.IsNullOrWhiteSpace(alert.SourceName)
+                ? LocalizationService.Format(
+                    lang,
+                    _officialAlertResult?.SourceStatus == AlertSourceStatus.StaleCache
+                        ? "alert_source_stale"
+                        : "alert_source_official",
+                    alert.SourceName)
                 : (string.IsNullOrWhiteSpace(alert.SourceName)
                     ? LocalizationService.T(lang, "alert_source_estimate")
                     : alert.SourceName);
+            DrawerAlertSourceText.Text = $"{sourceLine}{certaintySuffix}";
             DrawerAlertBanner.Visibility = Visibility.Visible;
         }
 

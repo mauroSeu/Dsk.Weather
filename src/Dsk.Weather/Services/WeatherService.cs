@@ -228,6 +228,57 @@ namespace Dsk.Weather.Services
             return null;
         }
 
+        private static HourlyForecastPoint? FindConsecutiveMatching(
+            List<HourlyForecastPoint> points,
+            int maxHoursAhead,
+            DateTime localNow,
+            int requiredConsecutive,
+            Func<HourlyForecastPoint, bool> predicate)
+        {
+            if (requiredConsecutive <= 1)
+            {
+                return FindFirstMatching(points, maxHoursAhead, localNow, predicate);
+            }
+
+            DateTime limit = localNow.AddHours(maxHoursAhead);
+            HourlyForecastPoint? runStart = null;
+            DateTime prevMatchTime = default;
+            int streak = 0;
+
+            foreach (HourlyForecastPoint hp in points)
+            {
+                if (hp.LocalTime > limit)
+                {
+                    break;
+                }
+
+                if (!predicate(hp))
+                {
+                    runStart = null;
+                    streak = 0;
+                    continue;
+                }
+
+                if (runStart is null || (hp.LocalTime - prevMatchTime).TotalHours > 1.51)
+                {
+                    runStart = hp;
+                    streak = 1;
+                }
+                else
+                {
+                    streak++;
+                }
+
+                prevMatchTime = hp.LocalTime;
+                if (streak >= requiredConsecutive)
+                {
+                    return runStart;
+                }
+            }
+
+            return null;
+        }
+
         private static bool IsRainOrDrizzleCode(int code)
         {
             return (code >= 51 && code <= 67) || (code >= 80 && code <= 82);
@@ -241,6 +292,26 @@ namespace Dsk.Weather.Services
         private static bool IsFreezingRainCode(int code)
         {
             return code is 56 or 57 or 66 or 67;
+        }
+
+        private static bool IsIcyRiskCurrent(WeatherSnapshot w)
+        {
+            return w.TemperatureC <= -5.0 ||
+                (w.TemperatureC <= 0.0 && (w.RelativeHumidity >= 80 ||
+                    IsRainOrDrizzleCode(w.WeatherCode) ||
+                    IsSnowCode(w.WeatherCode) ||
+                    w.WeatherCode is 45 or 48 ||
+                    w.PrecipitationMm >= 0.1));
+        }
+
+        private static bool IsIcyRiskHourly(HourlyForecastPoint hp)
+        {
+            return hp.TemperatureC <= -5.0 ||
+                (hp.TemperatureC <= 0.0 && (hp.PrecipProbability >= 40 ||
+                    hp.PrecipitationMm >= 0.1 ||
+                    IsRainOrDrizzleCode(hp.WeatherCode) ||
+                    IsSnowCode(hp.WeatherCode) ||
+                    hp.WeatherCode is 45 or 48));
         }
 
         public static WeatherAlertInfo EvaluateWeatherAlert(WeatherSnapshot? w, TemperatureUnit unit, DateTime localNow, string lang = "it")
@@ -299,35 +370,19 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_red_fr_at", hhmm));
             }
 
-            double peakGust = w.WindGustsKmh;
-            DateTime? peakGustTime = null;
-            double peakWind = w.WindSpeedKmh;
-            DateTime? peakWindTime = null;
-            DateTime limit12 = localNow.AddHours(12);
-            foreach (HourlyForecastPoint hp in horizon)
+            HourlyForecastPoint? severeGust = FindFirstMatching(horizon, 12, localNow, hp => hp.WindGustsKmh >= 90.0);
+            HourlyForecastPoint? persistentRedGust = FindConsecutiveMatching(horizon, 12, localNow, 2, hp => hp.WindGustsKmh >= 75.0);
+            if (w.WindGustsKmh >= 75.0 || severeGust is not null || persistentRedGust is not null)
             {
-                if (hp.LocalTime > limit12)
-                {
-                    continue;
-                }
-
-                if (hp.WindGustsKmh > peakGust)
-                {
-                    peakGust = hp.WindGustsKmh;
-                    peakGustTime = hp.LocalTime;
-                }
-                if (hp.WindSpeedKmh > peakWind)
-                {
-                    peakWind = hp.WindSpeedKmh;
-                    peakWindTime = hp.LocalTime;
-                }
-            }
-
-            if (peakGust >= 75.0)
-            {
-                string gustStr = $"{Math.Round(peakGust).ToString("0", CultureInfo.InvariantCulture)} km/h";
-                string when = peakGustTime.HasValue
-                    ? LocalizationService.Format(lang, "alert_when_at", peakGustTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
+                double redGustVal = w.WindGustsKmh >= 75.0
+                    ? w.WindGustsKmh
+                    : (severeGust?.WindGustsKmh ?? persistentRedGust!.WindGustsKmh);
+                DateTime? redGustTime = w.WindGustsKmh >= 75.0
+                    ? null
+                    : (severeGust?.LocalTime ?? persistentRedGust!.LocalTime);
+                string gustStr = $"{Math.Round(redGustVal).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string when = redGustTime.HasValue
+                    ? LocalizationService.Format(lang, "alert_when_at", redGustTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
                     : LocalizationService.T(lang, "alert_when_now");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
@@ -336,7 +391,7 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_red_gusts", gustStr, when));
             }
 
-            if (w.WeatherCode is 65 or 82)
+            if (w.WeatherCode is 65 or 82 || w.PrecipitationMm >= 15.0)
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
@@ -345,7 +400,8 @@ namespace Dsk.Weather.Services
                     LocalizationService.T(lang, "alert_red_cloudburst_now"));
             }
 
-            HourlyForecastPoint? cloudburst = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 65 or 82);
+            HourlyForecastPoint? cloudburst = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 65 or 82 || hp.PrecipitationMm >= 15.0)
+                ?? FindConsecutiveMatching(horizon, 12, localNow, 2, hp => hp.PrecipitationMm >= 10.0);
             if (cloudburst is not null)
             {
                 string hhmm = cloudburst.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -386,12 +442,15 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_red_heat", tempStr));
             }
 
-            // --- ALLERTA GIALLA (Attenzione) ---
-            if (peakGust >= 55.0)
+            // --- ALLERTA GIALLA (Attenzione: corrente o persistente >= 2h consecutive) ---
+            HourlyForecastPoint? persistentYellowGust = FindConsecutiveMatching(horizon, 12, localNow, 2, hp => hp.WindGustsKmh >= 60.0);
+            if (w.WindGustsKmh >= 60.0 || persistentYellowGust is not null)
             {
-                string gustStr = $"{Math.Round(peakGust).ToString("0", CultureInfo.InvariantCulture)} km/h";
-                string when = peakGustTime.HasValue
-                    ? LocalizationService.Format(lang, "alert_when_at", peakGustTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
+                double yellowGustVal = w.WindGustsKmh >= 60.0 ? w.WindGustsKmh : persistentYellowGust!.WindGustsKmh;
+                DateTime? yellowGustTime = w.WindGustsKmh >= 60.0 ? null : persistentYellowGust!.LocalTime;
+                string gustStr = $"{Math.Round(yellowGustVal).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string when = yellowGustTime.HasValue
+                    ? LocalizationService.Format(lang, "alert_when_at", yellowGustTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
                     : LocalizationService.T(lang, "alert_when_now");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
@@ -400,11 +459,14 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_yellow_gusts", gustStr, when));
             }
 
-            if (peakWind >= 42.0)
+            HourlyForecastPoint? persistentWind = FindConsecutiveMatching(horizon, 12, localNow, 2, hp => hp.WindSpeedKmh >= 45.0);
+            if (w.WindSpeedKmh >= 45.0 || persistentWind is not null)
             {
-                string windStr = $"{Math.Round(peakWind).ToString("0", CultureInfo.InvariantCulture)} km/h";
-                string when = peakWindTime.HasValue
-                    ? LocalizationService.Format(lang, "alert_when_at", peakWindTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
+                double windVal = w.WindSpeedKmh >= 45.0 ? w.WindSpeedKmh : persistentWind!.WindSpeedKmh;
+                DateTime? windTime = w.WindSpeedKmh >= 45.0 ? null : persistentWind!.LocalTime;
+                string windStr = $"{Math.Round(windVal).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string when = windTime.HasValue
+                    ? LocalizationService.Format(lang, "alert_when_at", windTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
                     : LocalizationService.T(lang, "alert_when_now");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
@@ -413,7 +475,7 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_yellow_wind", windStr, when));
             }
 
-            if (w.TemperatureC <= 0.0)
+            if (IsIcyRiskCurrent(w))
             {
                 string frostStr = FormatTemp(w.TemperatureC, unit);
                 return new WeatherAlertInfo(
@@ -423,21 +485,20 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_yellow_frost_now", frostStr));
             }
 
-            double minTemp12 = double.MaxValue;
-            DateTime? minTempTime = null;
-            foreach (HourlyForecastPoint hp in horizon)
+            HourlyForecastPoint? frostEvent = FindConsecutiveMatching(horizon, 12, localNow, 2, IsIcyRiskHourly);
+            if (frostEvent is null && w.TemperatureC >= 4.0)
             {
-                if (hp.LocalTime <= limit12 && hp.TemperatureC < minTemp12)
-                {
-                    minTemp12 = hp.TemperatureC;
-                    minTempTime = hp.LocalTime;
-                }
+                frostEvent = FindFirstMatching(
+                    horizon,
+                    12,
+                    localNow,
+                    hp => hp.TemperatureC <= 0.0 && (w.TemperatureC - hp.TemperatureC) >= 6.0);
             }
 
-            if (minTemp12 <= 0.0 && minTempTime.HasValue)
+            if (frostEvent is not null)
             {
-                string frostStr = FormatTemp(minTemp12, unit);
-                string hhmm = minTempTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+                string frostStr = FormatTemp(frostEvent.TemperatureC, unit);
+                string hhmm = frostEvent.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
                     LocalizationService.T(lang, "alert_frost"),
@@ -445,7 +506,7 @@ namespace Dsk.Weather.Services
                     LocalizationService.Format(lang, "alert_yellow_frost_at", frostStr, hhmm));
             }
 
-            if (w.WeatherCode is 63 or 81)
+            if (w.WeatherCode is 63 or 81 || w.PrecipitationMm >= 5.0)
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
@@ -454,7 +515,7 @@ namespace Dsk.Weather.Services
                     LocalizationService.T(lang, "alert_yellow_rain_now"));
             }
 
-            HourlyForecastPoint? strongRain = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 63 or 81);
+            HourlyForecastPoint? strongRain = FindConsecutiveMatching(horizon, 12, localNow, 2, hp => hp.WeatherCode is 63 or 81 || hp.PrecipitationMm >= 5.0);
             if (strongRain is not null)
             {
                 string hhmm = strongRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -474,7 +535,7 @@ namespace Dsk.Weather.Services
                     LocalizationService.T(lang, "alert_yellow_snow_now"));
             }
 
-            HourlyForecastPoint? upcomingSnowAlert = FindFirstMatching(horizon, 12, localNow, hp => IsSnowCode(hp.WeatherCode));
+            HourlyForecastPoint? upcomingSnowAlert = FindConsecutiveMatching(horizon, 12, localNow, 2, hp => IsSnowCode(hp.WeatherCode));
             if (upcomingSnowAlert is not null)
             {
                 string hhmm = upcomingSnowAlert.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -494,7 +555,7 @@ namespace Dsk.Weather.Services
                     LocalizationService.T(lang, "alert_yellow_fog_now"));
             }
 
-            HourlyForecastPoint? fogAlert = FindFirstMatching(horizon, 8, localNow, hp => hp.WeatherCode is 45 or 48);
+            HourlyForecastPoint? fogAlert = FindConsecutiveMatching(horizon, 8, localNow, 2, hp => hp.WeatherCode is 45 or 48);
             if (fogAlert is not null)
             {
                 string hhmm = fogAlert.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
@@ -543,6 +604,9 @@ namespace Dsk.Weather.Services
             string normalizedLang = LocalizationService.NormalizeLanguage(lang);
             string nowLabel = LocalizationService.T(normalizedLang, "alert_now");
             string estimateSource = LocalizationService.T(normalizedLang, "alert_source_estimate");
+            List<HourlyForecastPoint> horizon = w.Next12Hours is { Count: > 0 }
+                ? w.Next12Hours
+                : w.NextHours;
 
             if (w.WeatherCode >= 95)
             {
@@ -551,24 +615,64 @@ namespace Dsk.Weather.Services
                 return new WeatherAlertInfo(WeatherAlertLevel.Red, title, nowLabel, msg, false, estimateSource, msg);
             }
 
-            if (IsFreezingRainCode(w.WeatherCode))
+            HourlyForecastPoint? nearStorm = FindFirstMatching(horizon, 2, localNow, hp => hp.WeatherCode >= 95);
+            if (nearStorm is not null)
+            {
+                string title = LocalizationService.T(normalizedLang, nearStorm.WeatherCode >= 96 ? "alert_hail" : "alert_storm");
+                string hhmm = nearStorm.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                string msg = LocalizationService.Format(normalizedLang, "alert_red_storm_at", title, hhmm);
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, LocalizationService.Format(normalizedLang, "alert_at", hhmm), msg, false, estimateSource, msg);
+            }
+
+            if (IsFreezingRainCode(w.WeatherCode) ||
+                (w.TemperatureC <= 0.0 && (IsRainOrDrizzleCode(w.WeatherCode) || w.PrecipitationMm >= 0.5)))
             {
                 string title = LocalizationService.T(normalizedLang, "alert_freezing_rain");
                 string msg = LocalizationService.T(normalizedLang, "alert_red_fr_now");
                 return new WeatherAlertInfo(WeatherAlertLevel.Red, title, nowLabel, msg, false, estimateSource, msg);
             }
 
-            if (w.WindGustsKmh >= 75.0)
+            HourlyForecastPoint? nearFreezingRain = FindFirstMatching(horizon, 2, localNow, hp => IsFreezingRainCode(hp.WeatherCode));
+            if (nearFreezingRain is not null)
             {
-                string gustStr = $"{Math.Round(w.WindGustsKmh).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string title = LocalizationService.T(normalizedLang, "alert_freezing_rain");
+                string hhmm = nearFreezingRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                string msg = LocalizationService.Format(normalizedLang, "alert_red_fr_at", hhmm);
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, LocalizationService.Format(normalizedLang, "alert_at", hhmm), msg, false, estimateSource, msg);
+            }
+
+            HourlyForecastPoint? persistentCriticalGust = FindConsecutiveMatching(horizon, 3, localNow, 2, hp => hp.WindGustsKmh >= 75.0);
+            bool currentSustainedGust = w.WindGustsKmh >= 90.0 ||
+                (w.WindGustsKmh >= 75.0 && (horizon.Count == 0 || FindFirstMatching(horizon, 2, localNow, hp => hp.WindGustsKmh >= 65.0) is not null));
+            if (currentSustainedGust || persistentCriticalGust is not null)
+            {
+                double gustVal = currentSustainedGust ? w.WindGustsKmh : persistentCriticalGust!.WindGustsKmh;
+                string gustStr = $"{Math.Round(gustVal).ToString("0", CultureInfo.InvariantCulture)} km/h";
                 string title = LocalizationService.T(normalizedLang, "alert_strong_gusts");
-                string when = LocalizationService.T(normalizedLang, "alert_when_now");
+                string when = currentSustainedGust
+                    ? LocalizationService.T(normalizedLang, "alert_when_now")
+                    : LocalizationService.Format(normalizedLang, "alert_when_at", persistentCriticalGust!.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture));
                 string msg = LocalizationService.Format(normalizedLang, "alert_red_gusts", gustStr, when);
                 return new WeatherAlertInfo(WeatherAlertLevel.Red, title, gustStr, msg, false, estimateSource, msg);
             }
 
+            if (w.WeatherCode is 65 or 82 || w.PrecipitationMm >= 15.0)
+            {
+                string title = LocalizationService.T(normalizedLang, "alert_cloudburst");
+                string msg = LocalizationService.T(normalizedLang, "alert_red_cloudburst_now");
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, nowLabel, msg, false, estimateSource, msg);
+            }
+
+            HourlyForecastPoint? persistentCloudburst = FindConsecutiveMatching(horizon, 3, localNow, 2, hp => hp.PrecipitationMm >= 10.0);
+            if (persistentCloudburst is not null)
+            {
+                string title = LocalizationService.T(normalizedLang, "alert_cloudburst");
+                string hhmm = persistentCloudburst.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                string msg = LocalizationService.Format(normalizedLang, "alert_red_cloudburst_at", hhmm);
+                return new WeatherAlertInfo(WeatherAlertLevel.Red, title, LocalizationService.Format(normalizedLang, "alert_at", hhmm), msg, false, estimateSource, msg);
+            }
+
             _ = unit;
-            _ = localNow;
             return WeatherAlertInfo.None;
         }
 
@@ -577,7 +681,7 @@ namespace Dsk.Weather.Services
             string latStr = lat.ToString("0.####", CultureInfo.InvariantCulture);
             string lonStr = lon.ToString("0.####", CultureInfo.InvariantCulture);
             string modelParam = GetOpenMeteoModelParam(model);
-            return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,wind_gusts_10m&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max,wind_gusts_10m_max&timezone=auto&forecast_days=7&models={modelParam}";
+            return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,wind_gusts_10m,precipitation&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day,wind_gusts_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max,wind_gusts_10m_max&timezone=auto&forecast_days=7&models={modelParam}";
         }
 
         public static string BuildGeocodingUrl(string query, string lang = "it")
@@ -730,6 +834,7 @@ namespace Dsk.Weather.Services
                 snapshot.WindGustsKmh = TryGetDouble(current, "wind_gusts_10m", snapshot.WindSpeedKmh);
                 snapshot.WindDirectionDeg = TryGetInt(current, "wind_direction_10m", 0);
                 snapshot.RelativeHumidity = TryGetInt(current, "relative_humidity_2m", 0);
+                snapshot.PrecipitationMm = TryGetFlexibleDouble(current, "precipitation", 0.0);
                 snapshot.CurrentUvIndex = TryGetDouble(current, "uv_index", 0.0);
             }
 
@@ -739,6 +844,7 @@ namespace Dsk.Weather.Services
                 var temps = GetDoubleArray(hourly, "temperature_2m");
                 var codes = GetIntArray(hourly, "weather_code");
                 var probs = GetIntArray(hourly, "precipitation_probability");
+                var precips = GetDoubleArray(hourly, "precipitation");
                 var winds = GetDoubleArray(hourly, "wind_speed_10m");
                 var gusts = GetDoubleArray(hourly, "wind_gusts_10m");
                 var windDirs = GetIntArray(hourly, "wind_direction_10m");
@@ -780,6 +886,7 @@ namespace Dsk.Weather.Services
                         TemperatureC = i < temps.Count ? temps[i] : snapshot.TemperatureC,
                         WeatherCode = i < codes.Count ? codes[i] : snapshot.WeatherCode,
                         PrecipProbability = i < probs.Count ? probs[i] : 0,
+                        PrecipitationMm = i < precips.Count ? precips[i] : 0.0,
                         WindSpeedKmh = hrWind,
                         WindGustsKmh = i < gusts.Count ? gusts[i] : hrWind,
                         WindDirectionDeg = i < windDirs.Count ? windDirs[i] : snapshot.WindDirectionDeg,

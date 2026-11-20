@@ -32,7 +32,8 @@ namespace Dsk.Weather.Models
         string Tooltip,
         bool IsOfficial = false,
         string SourceName = "",
-        string Description = "")
+        string Description = "",
+        string Certainty = "")
     {
         public static WeatherAlertInfo None { get; } = new WeatherAlertInfo(WeatherAlertLevel.None, string.Empty, string.Empty, string.Empty);
     }
@@ -49,6 +50,7 @@ namespace Dsk.Weather.Models
         public double WindGustsKmh { get; set; }
         public int WindDirectionDeg { get; set; }
         public int RelativeHumidity { get; set; }
+        public double PrecipitationMm { get; set; }
         public double TodayMaxC { get; set; }
         public double TodayMinC { get; set; }
         public int TodayPrecipProbMax { get; set; }
@@ -69,6 +71,7 @@ namespace Dsk.Weather.Models
         public double TemperatureC { get; set; }
         public int WeatherCode { get; set; }
         public int PrecipProbability { get; set; }
+        public double PrecipitationMm { get; set; }
         public double WindSpeedKmh { get; set; }
         public double WindGustsKmh { get; set; }
         public int WindDirectionDeg { get; set; }

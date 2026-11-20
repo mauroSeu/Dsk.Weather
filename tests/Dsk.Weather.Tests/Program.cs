@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media;
 using Dsk.Weather.Icons;
 using Dsk.Weather.Models;
@@ -40,7 +41,11 @@ namespace Dsk.Weather.Tests
                 ("ForecastDrawerDynamicAtmosphere", TestForecastDrawerDynamicAtmosphere),
                 ("MultiLanguageLocalizationAndSettings", TestMultiLanguageLocalizationAndSettings),
                 ("HourlyStripSunsetAndSunriseSlots", TestHourlyStripSunsetAndSunriseSlots),
-                ("OfficialAlertsParsingAndMatching", TestOfficialAlertsParsingAndMatching)
+                ("OfficialAlertsParsingAndMatching", TestOfficialAlertsParsingAndMatching),
+                ("OfficialAlertsGeometryPolygonAndCircle", TestOfficialAlertsGeometryPolygonAndCircle),
+                ("OfficialAlertsUpdateCancelReferencesAndCertainty", TestOfficialAlertsUpdateCancelReferencesAndCertainty),
+                ("OfficialAlertsSourceStatusAndStaleDegradation", TestOfficialAlertsSourceStatusAndStaleDegradation),
+                ("FallbackPersistenceAndNowcastThresholds", TestFallbackPersistenceAndNowcastThresholds)
             };
 
             int failures = 0;
@@ -1158,6 +1163,447 @@ namespace Dsk.Weather.Tests
                 WeatherAlertLevel.Red,
                 WeatherService.EvaluateCriticalNowcastOnly(liveStorm, TemperatureUnit.Celsius, baseNow, "it").Level,
                 "Nowcast critico segnala temporale WMO 95 in corso");
+        }
+
+        private static void TestOfficialAlertsGeometryPolygonAndCircle()
+        {
+            List<(double Lat, double Lon)> poly = OfficialAlertService.ParseCapPolygon(
+                "39.15,9.00 39.15,9.25 39.32,9.25 39.32,9.00 39.15,9.00");
+            AssertEqual(5, poly.Count, "Parsing poligono CAP 5 vertici");
+            AssertEqual(true, OfficialAlertService.IsPointInPolygon(39.2238, 9.1217, poly), "Cagliari dentro poligono");
+            AssertEqual(true, OfficialAlertService.IsPointInPolygon(39.15, 9.10, poly), "Punto sul bordo dentro poligono");
+            AssertEqual(false, OfficialAlertService.IsPointInPolygon(40.7259, 8.5556, poly), "Sassari fuori poligono");
+
+            (double Lat, double Lon, double RadiusKm)? circle = OfficialAlertService.ParseCapCircle("39.2238,9.1217 15");
+            AssertTrue(circle.HasValue, "Parsing cerchio CAP valido");
+            AssertEqual(true, OfficialAlertService.IsPointInCircle(39.24, 9.15, circle!.Value.Lat, circle.Value.Lon, circle.Value.RadiusKm), "Punto vicino dentro cerchio");
+            AssertEqual(false, OfficialAlertService.IsPointInCircle(40.7259, 8.5556, circle.Value.Lat, circle.Value.Lon, circle.Value.RadiusKm), "Sassari fuori cerchio");
+
+            var baseNow = new DateTime(2026, 11, 20, 12, 0, 0);
+            DateTimeOffset refLocal = new DateTimeOffset(baseNow, TimeZoneInfo.Local.GetUtcOffset(baseNow));
+            string onsetActive = refLocal.AddHours(-1).ToString("O", CultureInfo.InvariantCulture);
+            string expiresFuture = refLocal.AddHours(6).ToString("O", CultureInfo.InvariantCulture);
+
+            string polyAtom = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+              <entry>
+                <cap:identifier>IT-POLY-1</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:areaDesc>Sardegna Meridionale</cap:areaDesc>
+                <cap:event>Orange Rain Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Severe</cap:severity>
+                <cap:status>Actual</cap:status>
+                <cap:polygon>39.15,9.00 39.15,9.25 39.32,9.25 39.32,9.00 39.15,9.00</cap:polygon>
+              </entry>
+            </feed>
+            """;
+
+            var sardegna = new OfficialAlertService.GeoRegionInfo(
+                "it", "IT-88", string.Empty, "Sardegna", string.Empty, string.Empty, string.Empty, string.Empty);
+
+            OfficialAlertService.MeteoAlarmMatch? cagliariMatch =
+                OfficialAlertService.ParseMeteoAlarmAtom(polyAtom, sardegna, baseNow, 39.2238, 9.1217);
+            AssertTrue(cagliariMatch is not null && cagliariMatch.Level == WeatherAlertLevel.Orange, "Atom con poligono deve accettare Cagliari");
+
+            OfficialAlertService.MeteoAlarmMatch? sassariMatch =
+                OfficialAlertService.ParseMeteoAlarmAtom(polyAtom, sardegna, baseNow, 40.7259, 8.5556);
+            AssertTrue(sassariMatch is null, "Atom con poligono deve escludere Sassari anche se in IT019");
+
+            var genericMatch = new OfficialAlertService.MeteoAlarmMatch(
+                WeatherAlertLevel.Orange,
+                "Orange Rain Warning",
+                "Sardegna",
+                "IT019",
+                null,
+                refLocal.AddHours(-1),
+                refLocal.AddHours(6));
+
+            string capWithPolygon = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+              <status>Actual</status>
+              <msgType>Alert</msgType>
+              <info>
+                <language>it-IT</language>
+                <event>Pioggia intensa</event>
+                <onset>{onsetActive}</onset>
+                <expires>{expiresFuture}</expires>
+                <certainty>Observed</certainty>
+                <senderName>Aeronautica Militare</senderName>
+                <area>
+                  <areaDesc>Cagliari</areaDesc>
+                  <polygon>39.15,9.00 39.15,9.25 39.32,9.25 39.32,9.00 39.15,9.00</polygon>
+                </area>
+              </info>
+            </alert>
+            """;
+
+            WeatherAlertInfo? capInside = OfficialAlertService.TryBuildAlertFromCap(capWithPolygon, genericMatch, baseNow, "it", 39.2238, 9.1217);
+            WeatherAlertInfo? capOutside = OfficialAlertService.TryBuildAlertFromCap(capWithPolygon, genericMatch, baseNow, "it", 40.7259, 8.5556);
+            AssertTrue(capInside is not null && capInside.Certainty == "Observed", "CAP con poligono deve accettare il punto interno");
+            AssertTrue(capOutside is null, "CAP con poligono deve escludere il punto esterno");
+
+            string capWithoutGeometry = capWithPolygon.Replace("<polygon>39.15,9.00 39.15,9.25 39.32,9.25 39.32,9.00 39.15,9.00</polygon>", string.Empty);
+            WeatherAlertInfo? capAdminFallback = OfficialAlertService.TryBuildAlertFromCap(capWithoutGeometry, genericMatch, baseNow, "it", 40.7259, 8.5556);
+            AssertTrue(capAdminFallback is not null, "CAP senza geometria mantiene fallback amministrativo");
+        }
+
+        private static void TestOfficialAlertsUpdateCancelReferencesAndCertainty()
+        {
+            var baseNow = new DateTime(2026, 11, 20, 12, 0, 0);
+            DateTimeOffset refLocal = new DateTimeOffset(baseNow, TimeZoneInfo.Local.GetUtcOffset(baseNow));
+            string onsetActive = refLocal.AddHours(-1).ToString("O", CultureInfo.InvariantCulture);
+            string expiresFuture = refLocal.AddHours(6).ToString("O", CultureInfo.InvariantCulture);
+            string expiresPast = refLocal.AddHours(-1).ToString("O", CultureInfo.InvariantCulture);
+            string onsetFarFuture = refLocal.AddHours(36).ToString("O", CultureInfo.InvariantCulture);
+
+            string lifecycleAtom = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+              <entry>
+                <cap:identifier>IT-001</cap:identifier>
+                <cap:message_type>Alert</cap:message_type>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Red Thunderstorm Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-001-CANCEL</cap:identifier>
+                <cap:message_type>Cancel</cap:message_type>
+                <cap:references>servizio@it,IT-001,2026-11-20T10:00:00Z</cap:references>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Cancel Warning</cap:event>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-002</cap:identifier>
+                <cap:message_type>Alert</cap:message_type>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Orange Wind Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Severe</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-003</cap:identifier>
+                <cap:message_type>Update</cap:message_type>
+                <cap:references>servizio@it,IT-002,2026-11-20T10:30:00Z</cap:references>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Yellow Wind Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Moderate</cap:severity>
+                <cap:certainty>Observed</cap:certainty>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-TEST</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Red Exercise</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Test</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-FUTURE</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Red Future</cap:event>
+                <cap:onset>{onsetFarFuture}</cap:onset>
+                <cap:expires>{refLocal.AddHours(42):O}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-EXPIRED</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Red Expired</cap:event>
+                <cap:onset>{refLocal.AddHours(-6):O}</cap:onset>
+                <cap:expires>{expiresPast}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-UNLIKELY</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Red Unlikely</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Extreme</cap:severity>
+                <cap:certainty>Unlikely</cap:certainty>
+                <cap:status>Actual</cap:status>
+              </entry>
+            </feed>
+            """;
+
+            var sardegna = new OfficialAlertService.GeoRegionInfo(
+                "it", "IT-88", string.Empty, "Sardegna", string.Empty, string.Empty, string.Empty, string.Empty);
+
+            List<OfficialAlertService.MeteoAlarmMatch> candidates =
+                OfficialAlertService.ParseMeteoAlarmCandidates(lifecycleAtom, sardegna, baseNow);
+            AssertEqual(1, candidates.Count, "Solo IT-003 (Update) deve restare attivo dopo Cancel/Update/Test/Expires/Future/Unlikely");
+            AssertEqual("IT-003", candidates[0].Identifier, "Identificatore superstite IT-003");
+            AssertEqual(WeatherAlertLevel.Yellow, candidates[0].Level, "Livello aggiornato a Yellow da Update");
+            AssertEqual("Observed", candidates[0].Certainty, "Certainty Observed preservata");
+
+            string certaintyTieAtom = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
+              <entry>
+                <cap:identifier>IT-POS</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Yellow Rain Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Moderate</cap:severity>
+                <cap:certainty>Possible</cap:certainty>
+                <cap:status>Actual</cap:status>
+              </entry>
+              <entry>
+                <cap:identifier>IT-OBS</cap:identifier>
+                <cap:geocode><valueName>EMMA_ID</valueName><value>IT019</value></cap:geocode>
+                <cap:event>Yellow Wind Warning</cap:event>
+                <cap:onset>{onsetActive}</cap:onset>
+                <cap:expires>{expiresFuture}</cap:expires>
+                <cap:severity>Moderate</cap:severity>
+                <cap:certainty>Observed</cap:certainty>
+                <cap:status>Actual</cap:status>
+              </entry>
+            </feed>
+            """;
+            OfficialAlertService.MeteoAlarmMatch? tieWinner =
+                OfficialAlertService.ParseMeteoAlarmAtom(certaintyTieAtom, sardegna, baseNow);
+            AssertTrue(tieWinner is not null && tieWinner.Identifier == "IT-OBS", "A parità di severità Observed deve vincere su Possible");
+        }
+
+        private static void TestOfficialAlertsSourceStatusAndStaleDegradation()
+        {
+            OfficialAlertService.ClearCachesForTests();
+            try
+            {
+                DateTimeOffset t0 = new DateTimeOffset(2026, 11, 20, 12, 0, 0, TimeSpan.Zero);
+                int fetchCount = 0;
+
+                OfficialAlertService.PayloadFetchOutcome live = OfficialAlertService.FetchPayloadWithCacheAsync(
+                    "test:feed",
+                    "https://example.invalid/feed",
+                    t0,
+                    (_, _) =>
+                    {
+                        fetchCount++;
+                        return Task.FromResult<string?>("FEED_BODY_V1");
+                    },
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                AssertEqual(AlertSourceStatus.Live, live.Status, "Primo fetch riuscito -> Live");
+                AssertEqual("FEED_BODY_V1", live.Body, "Body V1");
+                AssertEqual((DateTimeOffset?)t0, live.LastSuccessfulFetchUtc, "LastSuccessfulFetchUtc = t0");
+                AssertEqual(1, fetchCount, "1 chiamata effettuata");
+
+                OfficialAlertService.PayloadFetchOutcome cached = OfficialAlertService.FetchPayloadWithCacheAsync(
+                    "test:feed",
+                    "https://example.invalid/feed",
+                    t0.AddMinutes(5),
+                    (_, _) => throw new InvalidOperationException("Non deve interrogare la rete entro TTL"),
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                AssertEqual(AlertSourceStatus.Live, cached.Status, "Cache fresca -> Live");
+                AssertEqual("FEED_BODY_V1", cached.Body, "Body da cache fresca");
+
+                OfficialAlertService.PayloadFetchOutcome stale = OfficialAlertService.FetchPayloadWithCacheAsync(
+                    "test:feed",
+                    "https://example.invalid/feed",
+                    t0.AddMinutes(20),
+                    (_, _) => Task.FromResult<string?>(null),
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                AssertEqual(AlertSourceStatus.StaleCache, stale.Status, "Errore rete entro 60 min -> StaleCache");
+                AssertEqual("FEED_BODY_V1", stale.Body, "Body preservato in StaleCache");
+                AssertEqual((DateTimeOffset?)t0, stale.LastSuccessfulFetchUtc, "Timestamp ultimo fetch preservato in StaleCache");
+
+                OfficialAlertService.PayloadFetchOutcome degraded = OfficialAlertService.FetchPayloadWithCacheAsync(
+                    "test:feed",
+                    "https://example.invalid/feed",
+                    t0.AddMinutes(75),
+                    (_, _) => Task.FromResult<string?>(null),
+                    CancellationToken.None).GetAwaiter().GetResult();
+
+                AssertEqual(AlertSourceStatus.Fallback, degraded.Status, "Errore rete oltre 60 min -> Fallback esplicito (non Live)");
+                AssertTrue(degraded.Body is null, "Nessun body oltre la grace period");
+                AssertEqual((DateTimeOffset?)t0, degraded.LastSuccessfulFetchUtc, "LastSuccessfulFetchUtc tracciato anche su Fallback");
+            }
+            finally
+            {
+                OfficialAlertService.ClearCachesForTests();
+            }
+        }
+
+        private static void TestFallbackPersistenceAndNowcastThresholds()
+        {
+            var baseNow = new DateTime(2026, 11, 20, 12, 0, 0);
+
+            // 1. Singolo picco orario isolato -> NON deve generare allerta gialla
+            var singleGustSpike = new WeatherSnapshot
+            {
+                TemperatureC = 14.0,
+                WeatherCode = 3,
+                WindSpeedKmh = 20.0,
+                WindGustsKmh = 30.0,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(1), TemperatureC = 14.0, WeatherCode = 3, WindGustsKmh = 32.0 },
+                    new() { LocalTime = baseNow.AddHours(2), TemperatureC = 13.0, WeatherCode = 3, WindGustsKmh = 62.0 },
+                    new() { LocalTime = baseNow.AddHours(3), TemperatureC = 13.0, WeatherCode = 3, WindGustsKmh = 28.0 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.None,
+                WeatherService.EvaluateWeatherAlert(singleGustSpike, TemperatureUnit.Celsius, baseNow).Level,
+                "Picco isolato di 1h a 62 km/h deve essere ignorato");
+
+            var drySingleFreeze = new WeatherSnapshot
+            {
+                TemperatureC = 2.0,
+                WeatherCode = 0,
+                RelativeHumidity = 45,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(2), TemperatureC = -1.0, WeatherCode = 0, PrecipProbability = 0 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.None,
+                WeatherService.EvaluateWeatherAlert(drySingleFreeze, TemperatureUnit.Celsius, baseNow).Level,
+                "1h isolata secca a -1°C senza umidità/calo brusco non attiva falsi allarmi");
+
+            // 2. Persistenza >= 2 ore consecutive -> Allerta Gialla
+            var persistentGust = new WeatherSnapshot
+            {
+                TemperatureC = 14.0,
+                WeatherCode = 3,
+                WindSpeedKmh = 20.0,
+                WindGustsKmh = 30.0,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(1), TemperatureC = 14.0, WeatherCode = 3, WindGustsKmh = 62.0 },
+                    new() { LocalTime = baseNow.AddHours(2), TemperatureC = 13.0, WeatherCode = 3, WindGustsKmh = 64.0 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.Yellow,
+                WeatherService.EvaluateWeatherAlert(persistentGust, TemperatureUnit.Celsius, baseNow).Level,
+                "Raffiche >= 60 km/h per 2h consecutive -> Yellow");
+
+            var persistentRain = new WeatherSnapshot
+            {
+                TemperatureC = 12.0,
+                WeatherCode = 3,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(1), TemperatureC = 11.0, WeatherCode = 61, PrecipitationMm = 6.2 },
+                    new() { LocalTime = baseNow.AddHours(2), TemperatureC = 11.0, WeatherCode = 61, PrecipitationMm = 5.8 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.Yellow,
+                WeatherService.EvaluateWeatherAlert(persistentRain, TemperatureUnit.Celsius, baseNow).Level,
+                "Pioggia >= 5 mm/h per 2h consecutive -> Yellow");
+
+            var persistentWetFrost = new WeatherSnapshot
+            {
+                TemperatureC = 2.0,
+                WeatherCode = 3,
+                RelativeHumidity = 85,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(1), TemperatureC = -1.0, WeatherCode = 3, PrecipProbability = 60 },
+                    new() { LocalTime = baseNow.AddHours(2), TemperatureC = -1.5, WeatherCode = 3, PrecipProbability = 55 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.Yellow,
+                WeatherService.EvaluateWeatherAlert(persistentWetFrost, TemperatureUnit.Celsius, baseNow).Level,
+                "Gelo umido per 2h consecutive -> Yellow");
+
+            // 3. EvaluateCriticalNowcastOnly: intensità + persistenza
+            var singleFutureCriticalGust = new WeatherSnapshot
+            {
+                WeatherCode = 3,
+                WindGustsKmh = 25.0,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(1), WindGustsKmh = 76.0 },
+                    new() { LocalTime = baseNow.AddHours(2), WindGustsKmh = 40.0 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.None,
+                WeatherService.EvaluateCriticalNowcastOnly(singleFutureCriticalGust, TemperatureUnit.Celsius, baseNow).Level,
+                "Nowcast critico ignora singola ora futura isolata a 76 km/h");
+
+            var twoHoursCriticalGust = new WeatherSnapshot
+            {
+                WeatherCode = 3,
+                WindGustsKmh = 40.0,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = baseNow.AddHours(1), WindGustsKmh = 78.0 },
+                    new() { LocalTime = baseNow.AddHours(2), WindGustsKmh = 80.0 }
+                }
+            };
+            AssertEqual(
+                WeatherAlertLevel.Red,
+                WeatherService.EvaluateCriticalNowcastOnly(twoHoursCriticalGust, TemperatureUnit.Celsius, baseNow).Level,
+                "Nowcast critico segnala Red per raffiche >= 75 km/h su 2h consecutive imminenti");
+
+            var severeNowGust = new WeatherSnapshot { WeatherCode = 3, WindGustsKmh = 92.0 };
+            AssertEqual(
+                WeatherAlertLevel.Red,
+                WeatherService.EvaluateCriticalNowcastOnly(severeNowGust, TemperatureUnit.Celsius, baseNow).Level,
+                "Burrasca severa corrente 92 km/h -> Red immediata");
+
+            var rainOnFreeze = new WeatherSnapshot { WeatherCode = 61, TemperatureC = -1.0, PrecipitationMm = 2.0 };
+            AssertEqual(
+                WeatherAlertLevel.Red,
+                WeatherService.EvaluateCriticalNowcastOnly(rainOnFreeze, TemperatureUnit.Celsius, baseNow).Level,
+                "Pioggia su temperatura <= 0°C -> Red");
+
+            var extremeRainNow = new WeatherSnapshot { WeatherCode = 63, TemperatureC = 14.0, PrecipitationMm = 16.0 };
+            AssertEqual(
+                WeatherAlertLevel.Red,
+                WeatherService.EvaluateCriticalNowcastOnly(extremeRainNow, TemperatureUnit.Celsius, baseNow).Level,
+                "Pioggia >= 15 mm/h -> Red");
+
+            // 4. URL + parsing precipitation mm/h
+            string url = WeatherService.BuildForecastUrl(45.4642, 9.19);
+            AssertTrue(url.Contains(",precipitation", StringComparison.Ordinal), "URL Open-Meteo deve richiedere precipitation");
+            const string precipJson = """
+            {
+              "current": { "temperature_2m": 10.0, "apparent_temperature": 9.0, "weather_code": 63, "is_day": 1, "wind_speed_10m": 20.0, "wind_gusts_10m": 35.0, "relative_humidity_2m": 88, "uv_index": 1.0, "precipitation": 6.4 },
+              "hourly": {
+                "time": ["2026-11-20T13:00"],
+                "temperature_2m": [10.0],
+                "weather_code": [63],
+                "precipitation_probability": [90],
+                "precipitation": [7.8],
+                "wind_speed_10m": [22.0],
+                "wind_gusts_10m": [38.0],
+                "is_day": [1]
+              },
+              "daily": { "time": ["2026-11-20"], "weather_code": [63], "temperature_2m_max": [12.0], "temperature_2m_min": [7.0], "precipitation_probability_max": [90], "wind_speed_10m_max": [22.0] }
+            }
+            """;
+            WeatherSnapshot parsed = WeatherService.ParseForecastJson(precipJson, "Milano", baseNow);
+            AssertTrue(Math.Abs(parsed.PrecipitationMm - 6.4) < 0.01, "PrecipitationMm corrente estratto");
+            AssertTrue(Math.Abs(parsed.NextHours[0].PrecipitationMm - 7.8) < 0.01, "PrecipitationMm orario estratto");
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)
