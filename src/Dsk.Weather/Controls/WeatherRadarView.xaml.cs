@@ -52,6 +52,22 @@ namespace Dsk.Weather.Controls
             _animTimer.Tick += AnimTimer_Tick;
         }
 
+        private string _language = "it";
+
+        public void ApplyLanguage(string? language)
+        {
+            _language = LocalizationService.NormalizeLanguage(language);
+            LegendText.Text = LocalizationService.T(_language, "radar_legend");
+            MapFrameBorder.ToolTip = LocalizationService.T(_language, "radar_map_tooltip");
+            BtnPlayPause.ToolTip = LocalizationService.T(_language, "radar_play_tooltip");
+            BtnMapThemeToggle.ToolTip = LocalizationService.T(_language, "radar_theme_tooltip");
+            BtnZoomToggle.ToolTip = LocalizationService.T(_language, "radar_zoom_tooltip");
+            BtnRefreshRadar.ToolTip = LocalizationService.T(_language, "radar_refresh_tooltip");
+            CityPinLabel.Text = string.IsNullOrWhiteSpace(_cityName)
+                ? LocalizationService.T(_language, "radar_position")
+                : _cityName;
+        }
+
         public void ApplyPalette(MaterialThemePalette palette, bool darkTheme)
         {
             _palette = palette;
@@ -132,7 +148,9 @@ namespace Dsk.Weather.Controls
         private void UpdateHudLabels()
         {
             BtnZoomToggle.Content = $"Z{_zoom}";
-            CityPinLabel.Text = string.IsNullOrWhiteSpace(_cityName) ? "Posizione" : _cityName;
+            CityPinLabel.Text = string.IsNullOrWhiteSpace(_cityName)
+                ? LocalizationService.T(_language, "radar_position")
+                : _cityName;
             int radiusKm = RadarService.ComputeRadiusKm(_lat, _zoom, RangeRingRadiusPx);
             RangeRadiusText.Text = $"{radiusKm} km";
         }
@@ -173,9 +191,9 @@ namespace Dsk.Weather.Controls
             CancellationToken ct = _loadCts.Token;
 
             UpdateHudLabels();
-            StatusOverlayText.Text = "Caricamento radar...";
+            StatusOverlayText.Text = LocalizationService.T(_language, "radar_loading");
             StatusOverlay.Visibility = Visibility.Visible;
-            TimestampText.Text = "Aggiornamento radar...";
+            TimestampText.Text = LocalizationService.T(_language, "radar_loading");
             BtnRefreshRadar.IsEnabled = false;
 
             try
@@ -211,9 +229,9 @@ namespace Dsk.Weather.Controls
                     RadarOverlayCanvas.Children.Clear();
                     _renderedFrames.Clear();
                     _frameInfos.Clear();
-                    StatusOverlayText.Text = "Radar non disponibile offline";
+                    StatusOverlayText.Text = LocalizationService.T(_language, "radar_unavailable");
                     StatusOverlay.Visibility = Visibility.Visible;
-                    TimestampText.Text = "Nessun dato radar";
+                    TimestampText.Text = LocalizationService.T(_language, "radar_unavailable");
                     UpdateTimelineSegments();
                     return;
                 }

@@ -37,7 +37,8 @@ namespace Dsk.Weather.Tests
                 ("WeatherAlertsEvaluationAndSeverity", TestWeatherAlertsEvaluationAndSeverity),
                 ("DefaultStyleCheckAndResetHelper", TestDefaultStyleCheckAndReset),
                 ("HourlyStripAcrossAllLayouts", TestHourlyStripAcrossAllLayouts),
-                ("ForecastDrawerDynamicAtmosphere", TestForecastDrawerDynamicAtmosphere)
+                ("ForecastDrawerDynamicAtmosphere", TestForecastDrawerDynamicAtmosphere),
+                ("MultiLanguageLocalizationAndSettings", TestMultiLanguageLocalizationAndSettings)
             };
 
             int failures = 0;
@@ -846,7 +847,7 @@ namespace Dsk.Weather.Tests
                     () => { },
                     () => { });
 
-                window.SetAnimationPreview(WeatherIconKind.Rain);
+                window.ApplySettings(settings, refreshWeather: false);
                 AssertTrue(
                     window.ForecastDrawer.Background is LinearGradientBrush,
                     "ForecastDrawer deve usare LinearGradientBrush quando EnableDynamicAtmosphere = true su Card Completa");
@@ -868,6 +869,70 @@ namespace Dsk.Weather.Tests
             finally
             {
                 window?.Close();
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
+        }
+
+        private static void TestMultiLanguageLocalizationAndSettings()
+        {
+            AssertEqual("it", LocalizationService.NormalizeLanguage("invalid"), "Fallback lingua sconosciuta su it");
+            AssertEqual("nl", LocalizationService.NormalizeLanguage("nl-NL"), "Normalizzazione nl-NL su nl");
+
+            foreach (string lang in LocalizationService.SupportedLanguages)
+            {
+                string wmo = WeatherService.DescribeWmoCodeItalian(0, lang);
+                AssertTrue(!string.IsNullOrWhiteSpace(wmo), $"WMO 0 non vuoto per {lang}");
+            }
+
+            AssertEqual("Clear", WeatherService.DescribeWmoCodeItalian(0, "en"), "WMO 0 EN");
+            AssertEqual("Klar", WeatherService.DescribeWmoCodeItalian(0, "de"), "WMO 0 DE");
+            AssertEqual("Helder", WeatherService.DescribeWmoCodeItalian(0, "nl"), "WMO 0 NL");
+            AssertEqual("Despejado", WeatherService.DescribeWmoCodeItalian(0, "es"), "WMO 0 ES");
+            AssertEqual("Limpo", WeatherService.DescribeWmoCodeItalian(0, "pt"), "WMO 0 PT");
+
+            AssertEqual("SW", WeatherService.DescribeWindDirectionCardinal(225, "en"), "Cardinale SW in EN");
+            AssertEqual("SO", WeatherService.DescribeWindDirectionCardinal(225, "es"), "Cardinale SO in ES");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "DskWeatherTests_Lang_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var svc = new SettingsService(tempDir);
+                var cfg = new WidgetSettings { Language = "de" };
+                svc.Save(cfg);
+                WidgetSettings loaded = svc.Load();
+                AssertEqual("de", loaded.Language, "Lingua persistita");
+
+                loaded.ResetStyleToDefaults();
+                AssertEqual("de", loaded.Language, "ResetStyleToDefaults non deve resettare la lingua");
+
+                if (System.Windows.Application.Current is null)
+                {
+                    var app = new Dsk.Weather.App();
+                    app.InitializeComponent();
+                }
+
+                var win = new Dsk.Weather.Windows.SettingsWindow(
+                    loaded,
+                    new WeatherService(),
+                    new AutostartService(),
+                    _ => { },
+                    () => { });
+                try
+                {
+                    AssertEqual("Einstellungen", win.HeaderTitleText.Text, "Titolo SettingsWindow in tedesco");
+                    win.ApplyLanguage("en");
+                    AssertEqual("Settings", win.HeaderTitleText.Text, "Titolo SettingsWindow in inglese");
+                }
+                finally
+                {
+                    win.Close();
+                }
+            }
+            finally
+            {
                 if (Directory.Exists(tempDir))
                 {
                     Directory.Delete(tempDir, recursive: true);

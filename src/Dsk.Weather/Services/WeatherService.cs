@@ -29,27 +29,9 @@ namespace Dsk.Weather.Services
             return client;
         }
 
-        public static string DescribeWmoCodeItalian(int code)
+        public static string DescribeWmoCodeItalian(int code, string lang = "it")
         {
-            return code switch
-            {
-                0 => "Sereno",
-                1 => "Prevalentemente sereno",
-                2 => "Poco nuvoloso",
-                3 => "Nuvoloso",
-                45 or 48 => "Nebbia",
-                51 or 53 or 55 => "Pioviggine",
-                56 or 57 => "Pioviggine gelata",
-                61 => "Pioggia debole",
-                63 => "Pioggia moderata",
-                65 => "Pioggia forte",
-                66 or 67 => "Pioggia gelata",
-                71 or 73 or 75 or 77 => "Neve",
-                80 or 81 or 82 => "Rovesci",
-                85 or 86 => "Rovesci di neve",
-                95 or 96 or 99 => "Temporale",
-                _ => "Variabile"
-            };
+            return LocalizationService.DescribeWmoCode(code, lang);
         }
 
         public static WeatherIconKind MapWmoToIcon(int code, bool isDay)
@@ -86,34 +68,22 @@ namespace Dsk.Weather.Services
             };
         }
 
-        public static string DescribeWeatherModelItalian(WeatherModelPreference model)
+        public static string DescribeWeatherModelItalian(WeatherModelPreference model, string lang = "it")
         {
-            return model switch
-            {
-                WeatherModelPreference.EcmwfIfs => "ECMWF",
-                WeatherModelPreference.DwdIcon => "ICON",
-                _ => "Auto"
-            };
+            return LocalizationService.DescribeWeatherModel(model, lang);
         }
 
-        public static string DescribeUvLevelItalian(double uv)
+        public static string DescribeUvLevelItalian(double uv, string lang = "it")
         {
-            if (uv < 3.0) return "Basso";
-            if (uv < 6.0) return "Moderato";
-            if (uv < 8.0) return "Alto";
-            if (uv < 11.0) return "Molto alto";
-            return "Estremo";
+            return LocalizationService.DescribeUvLevel(uv, lang);
         }
 
-        public static string DescribeWindDirectionCardinal(int degrees)
+        public static string DescribeWindDirectionCardinal(int degrees, string lang = "it")
         {
-            int norm = ((degrees % 360) + 360) % 360;
-            string[] dirs = { "N", "NE", "E", "SE", "S", "SO", "O", "NO" };
-            int idx = (int)Math.Round(norm / 45.0, MidpointRounding.AwayFromZero) % 8;
-            return dirs[idx];
+            return LocalizationService.DescribeWindDirectionCardinal(degrees, lang);
         }
 
-        public static string BuildAtAGlanceInsight(WeatherSnapshot w, DateTime localNow)
+        public static string BuildAtAGlanceInsight(WeatherSnapshot w, DateTime localNow, string lang = "it")
         {
             if (w is null)
             {
@@ -126,24 +96,24 @@ namespace Dsk.Weather.Services
 
             if (w.WeatherCode >= 95)
             {
-                return "Temporale in corso · Prestare attenzione";
+                return LocalizationService.T(lang, "insight_storm_now");
             }
 
             HourlyForecastPoint? upcomingStorm = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode >= 95);
             if (upcomingStorm is not null)
             {
-                return $"Temporale previsto verso le {upcomingStorm.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)}";
+                return LocalizationService.Format(lang, "insight_storm_at", upcomingStorm.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture));
             }
 
             if (IsSnowCode(w.WeatherCode))
             {
-                return "Neve in corso";
+                return LocalizationService.T(lang, "insight_snow_now");
             }
 
             HourlyForecastPoint? upcomingSnow = FindFirstMatching(horizon, 12, localNow, hp => IsSnowCode(hp.WeatherCode));
             if (upcomingSnow is not null)
             {
-                return $"Neve prevista verso le {upcomingSnow.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)}";
+                return LocalizationService.Format(lang, "insight_snow_at", upcomingSnow.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture));
             }
 
             if (IsRainOrDrizzleCode(w.WeatherCode))
@@ -156,10 +126,10 @@ namespace Dsk.Weather.Services
 
                 if (dryAgain is not null)
                 {
-                    return $"Pioggia in corso · Migliora verso le {dryAgain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)}";
+                    return LocalizationService.Format(lang, "insight_rain_clear_at", dryAgain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture));
                 }
 
-                return "Pioggia in corso nelle prossime ore";
+                return LocalizationService.T(lang, "insight_rain_hours");
             }
 
             HourlyForecastPoint? upcomingRain = FindFirstMatching(
@@ -171,7 +141,7 @@ namespace Dsk.Weather.Services
             if (upcomingRain is not null)
             {
                 int prob = Math.Max(upcomingRain.PrecipProbability, 50);
-                return $"Pioggia in arrivo verso le {upcomingRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)} ({prob}%)";
+                return LocalizationService.Format(lang, "insight_rain_at", upcomingRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture), prob);
             }
 
             double peakWind = w.WindSpeedKmh;
@@ -185,20 +155,20 @@ namespace Dsk.Weather.Services
 
             if (w.WindSpeedKmh >= 35.0 || peakWind >= 38.0)
             {
-                return $"Vento sostenuto ({Math.Round(peakWind).ToString("0", CultureInfo.InvariantCulture)} km/h)";
+                return LocalizationService.Format(lang, "insight_wind_strong", Math.Round(peakWind).ToString("0", CultureInfo.InvariantCulture));
             }
 
             if (w.WeatherCode is 45 or 48 ||
                 FindFirstMatching(horizon, 8, localNow, hp => hp.WeatherCode is 45 or 48) is not null)
             {
-                return "Nebbia presente o in formazione";
+                return LocalizationService.T(lang, "insight_fog");
             }
 
             if (w.IsDay && w.CurrentUvIndex >= 6.0)
             {
-                string level = DescribeUvLevelItalian(w.CurrentUvIndex).ToLowerInvariant();
+                string level = DescribeUvLevelItalian(w.CurrentUvIndex, lang).ToLowerInvariant();
                 string uvFormatted = w.CurrentUvIndex.ToString("0.#", CultureInfo.InvariantCulture);
-                return $"Indice UV {level} ({uvFormatted}) · Protezione consigliata";
+                return LocalizationService.Format(lang, "insight_uv", level, uvFormatted);
             }
 
             double minNextTemp = double.MaxValue;
@@ -212,7 +182,7 @@ namespace Dsk.Weather.Services
 
             if (minNextTemp < double.MaxValue && (w.TemperatureC - minNextTemp) >= 6.0)
             {
-                return $"Calo termico in arrivo (fino a {Math.Round(minNextTemp).ToString("0", CultureInfo.InvariantCulture)}°)";
+                return LocalizationService.Format(lang, "insight_temp_drop", Math.Round(minNextTemp).ToString("0", CultureInfo.InvariantCulture));
             }
 
             if (w.SunsetLocal.HasValue)
@@ -220,7 +190,7 @@ namespace Dsk.Weather.Services
                 double minsToSunset = (w.SunsetLocal.Value - localNow).TotalMinutes;
                 if (minsToSunset >= 0.0 && minsToSunset <= 45.0)
                 {
-                    return $"Tramonto alle {w.SunsetLocal.Value.ToString("HH:mm", CultureInfo.InvariantCulture)}";
+                    return LocalizationService.Format(lang, "insight_sunset", w.SunsetLocal.Value.ToString("HH:mm", CultureInfo.InvariantCulture));
                 }
             }
 
@@ -229,16 +199,16 @@ namespace Dsk.Weather.Services
                 double minsToSunrise = (w.SunriseLocal.Value - localNow).TotalMinutes;
                 if (minsToSunrise >= 0.0 && minsToSunrise <= 45.0)
                 {
-                    return $"Alba alle {w.SunriseLocal.Value.ToString("HH:mm", CultureInfo.InvariantCulture)}";
+                    return LocalizationService.Format(lang, "insight_sunrise", w.SunriseLocal.Value.ToString("HH:mm", CultureInfo.InvariantCulture));
                 }
             }
 
             if (w.WeatherCode is 0 or 1)
             {
-                return w.IsDay ? "Giornata serena e stabile" : "Serata limpida e tranquilla";
+                return LocalizationService.T(lang, w.IsDay ? "insight_clear_day" : "insight_clear_night");
             }
 
-            return $"Nuvolosità variabile · Rischio pioggia {w.TodayPrecipProbMax}%";
+            return LocalizationService.Format(lang, "insight_variable", w.TodayPrecipProbMax);
         }
 
         private static HourlyForecastPoint? FindFirstMatching(
@@ -273,7 +243,7 @@ namespace Dsk.Weather.Services
             return code is 56 or 57 or 66 or 67;
         }
 
-        public static WeatherAlertInfo EvaluateWeatherAlert(WeatherSnapshot? w, TemperatureUnit unit, DateTime localNow)
+        public static WeatherAlertInfo EvaluateWeatherAlert(WeatherSnapshot? w, TemperatureUnit unit, DateTime localNow, string lang = "it")
         {
             if (w is null)
             {
@@ -284,36 +254,38 @@ namespace Dsk.Weather.Services
                 ? w.Next12Hours
                 : w.NextHours;
 
+            string nowLabel = LocalizationService.T(lang, "alert_now");
+
             // --- ALLERTA ROSSA (Priorità massima) ---
             if (w.WeatherCode >= 95)
             {
-                string title = w.WeatherCode >= 96 ? "GRANDINE" : "TEMPORALE";
+                string title = LocalizationService.T(lang, w.WeatherCode >= 96 ? "alert_hail" : "alert_storm");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
                     title,
-                    "In corso",
-                    $"Allerta Rossa · {title} in corso · Clicca per aprire il Radar Live");
+                    nowLabel,
+                    LocalizationService.Format(lang, "alert_red_storm_now", title));
             }
 
             HourlyForecastPoint? upcomingStorm = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode >= 95);
             if (upcomingStorm is not null)
             {
-                string title = upcomingStorm.WeatherCode >= 96 ? "GRANDINE" : "TEMPORALE";
+                string title = LocalizationService.T(lang, upcomingStorm.WeatherCode >= 96 ? "alert_hail" : "alert_storm");
                 string hhmm = upcomingStorm.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
                     title,
-                    $"Alle {hhmm}",
-                    $"Allerta Rossa · {title} previsto alle {hhmm} · Clicca per aprire il Radar Live");
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_red_storm_at", title, hhmm));
             }
 
             if (IsFreezingRainCode(w.WeatherCode))
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "PIOGGIA GELATA",
-                    "In corso",
-                    "Allerta Rossa · Pioggia gelata in corso · Strade scivolose");
+                    LocalizationService.T(lang, "alert_freezing_rain"),
+                    nowLabel,
+                    LocalizationService.T(lang, "alert_red_fr_now"));
             }
 
             HourlyForecastPoint? freezingRain = FindFirstMatching(horizon, 12, localNow, hp => IsFreezingRainCode(hp.WeatherCode));
@@ -322,9 +294,9 @@ namespace Dsk.Weather.Services
                 string hhmm = freezingRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "PIOGGIA GELATA",
-                    $"Alle {hhmm}",
-                    $"Allerta Rossa · Pioggia gelata prevista alle {hhmm} · Rischio ghiaccio");
+                    LocalizationService.T(lang, "alert_freezing_rain"),
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_red_fr_at", hhmm));
             }
 
             double peakGust = w.WindGustsKmh;
@@ -354,21 +326,23 @@ namespace Dsk.Weather.Services
             if (peakGust >= 75.0)
             {
                 string gustStr = $"{Math.Round(peakGust).ToString("0", CultureInfo.InvariantCulture)} km/h";
-                string when = peakGustTime.HasValue ? $" alle {peakGustTime.Value:HH:mm}" : " in corso";
+                string when = peakGustTime.HasValue
+                    ? LocalizationService.Format(lang, "alert_when_at", peakGustTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
+                    : LocalizationService.T(lang, "alert_when_now");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "RAFFICHE FORTI",
+                    LocalizationService.T(lang, "alert_strong_gusts"),
                     gustStr,
-                    $"Allerta Rossa · Raffiche fino a {gustStr}{when}");
+                    LocalizationService.Format(lang, "alert_red_gusts", gustStr, when));
             }
 
             if (w.WeatherCode is 65 or 82)
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "NUBIFRAGIO",
-                    "In corso",
-                    "Allerta Rossa · Pioggia violenta in corso · Clicca per aprire il Radar Live");
+                    LocalizationService.T(lang, "alert_cloudburst"),
+                    nowLabel,
+                    LocalizationService.T(lang, "alert_red_cloudburst_now"));
             }
 
             HourlyForecastPoint? cloudburst = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 65 or 82);
@@ -377,18 +351,18 @@ namespace Dsk.Weather.Services
                 string hhmm = cloudburst.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "NUBIFRAGIO",
-                    $"Alle {hhmm}",
-                    $"Allerta Rossa · Pioggia intensa prevista alle {hhmm} · Clicca per aprire il Radar Live");
+                    LocalizationService.T(lang, "alert_cloudburst"),
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_red_cloudburst_at", hhmm));
             }
 
             if (w.WeatherCode is 75 or 86)
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "NEVE INTENSA",
-                    "In corso",
-                    "Allerta Rossa · Nevicata intensa in corso");
+                    LocalizationService.T(lang, "alert_heavy_snow"),
+                    nowLabel,
+                    LocalizationService.T(lang, "alert_red_snow_now"));
             }
 
             HourlyForecastPoint? heavySnow = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 75 or 86);
@@ -397,9 +371,9 @@ namespace Dsk.Weather.Services
                 string hhmm = heavySnow.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "NEVE INTENSA",
-                    $"Alle {hhmm}",
-                    $"Allerta Rossa · Neve intensa prevista alle {hhmm}");
+                    LocalizationService.T(lang, "alert_heavy_snow"),
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_red_snow_at", hhmm));
             }
 
             if (w.TemperatureC >= 38.0 || w.ApparentTemperatureC >= 40.0)
@@ -407,32 +381,36 @@ namespace Dsk.Weather.Services
                 string tempStr = FormatTemp(w.TemperatureC, unit);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Red,
-                    "CALDO ESTREMO",
-                    $"Attuale {tempStr}",
-                    $"Allerta Rossa · Temperatura estrema ({tempStr})");
+                    LocalizationService.T(lang, "alert_extreme_heat"),
+                    LocalizationService.Format(lang, "alert_current_temp", tempStr),
+                    LocalizationService.Format(lang, "alert_red_heat", tempStr));
             }
 
             // --- ALLERTA GIALLA (Attenzione) ---
             if (peakGust >= 55.0)
             {
                 string gustStr = $"{Math.Round(peakGust).ToString("0", CultureInfo.InvariantCulture)} km/h";
-                string when = peakGustTime.HasValue ? $" alle {peakGustTime.Value:HH:mm}" : " in corso";
+                string when = peakGustTime.HasValue
+                    ? LocalizationService.Format(lang, "alert_when_at", peakGustTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
+                    : LocalizationService.T(lang, "alert_when_now");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "ALLERTA VENTO",
-                    $"Raffiche {gustStr}",
-                    $"Allerta Gialla · Raffiche fino a {gustStr}{when}");
+                    LocalizationService.T(lang, "alert_wind"),
+                    LocalizationService.Format(lang, "alert_gusts_val", gustStr),
+                    LocalizationService.Format(lang, "alert_yellow_gusts", gustStr, when));
             }
 
             if (peakWind >= 42.0)
             {
                 string windStr = $"{Math.Round(peakWind).ToString("0", CultureInfo.InvariantCulture)} km/h";
-                string when = peakWindTime.HasValue ? $" alle {peakWindTime.Value:HH:mm}" : " in corso";
+                string when = peakWindTime.HasValue
+                    ? LocalizationService.Format(lang, "alert_when_at", peakWindTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture))
+                    : LocalizationService.T(lang, "alert_when_now");
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "ALLERTA VENTO",
-                    $"Vento {windStr}",
-                    $"Allerta Gialla · Vento sostenuto ({windStr}){when}");
+                    LocalizationService.T(lang, "alert_wind"),
+                    LocalizationService.Format(lang, "alert_wind_val", windStr),
+                    LocalizationService.Format(lang, "alert_yellow_wind", windStr, when));
             }
 
             if (w.TemperatureC <= 0.0)
@@ -440,9 +418,9 @@ namespace Dsk.Weather.Services
                 string frostStr = FormatTemp(w.TemperatureC, unit);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "RISCHIO GELO",
-                    $"Attuale {frostStr}",
-                    $"Allerta Gialla · Temperature sotto zero ({frostStr}) · Rischio ghiaccio");
+                    LocalizationService.T(lang, "alert_frost"),
+                    LocalizationService.Format(lang, "alert_current_temp", frostStr),
+                    LocalizationService.Format(lang, "alert_yellow_frost_now", frostStr));
             }
 
             double minTemp12 = double.MaxValue;
@@ -462,18 +440,18 @@ namespace Dsk.Weather.Services
                 string hhmm = minTempTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "RISCHIO GELO",
-                    $"{frostStr} alle {hhmm}",
-                    $"Allerta Gialla · Rischio gelo fino a {frostStr} alle {hhmm}");
+                    LocalizationService.T(lang, "alert_frost"),
+                    LocalizationService.Format(lang, "alert_frost_at", frostStr, hhmm),
+                    LocalizationService.Format(lang, "alert_yellow_frost_at", frostStr, hhmm));
             }
 
             if (w.WeatherCode is 63 or 81)
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "PIOGGIA FORTE",
-                    "In corso",
-                    "Allerta Gialla · Pioggia moderata/forte in corso · Clicca per aprire il Radar Live");
+                    LocalizationService.T(lang, "alert_heavy_rain"),
+                    nowLabel,
+                    LocalizationService.T(lang, "alert_yellow_rain_now"));
             }
 
             HourlyForecastPoint? strongRain = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 63 or 81);
@@ -482,18 +460,18 @@ namespace Dsk.Weather.Services
                 string hhmm = strongRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "PIOGGIA FORTE",
-                    $"Alle {hhmm}",
-                    $"Allerta Gialla · Pioggia forte prevista alle {hhmm} · Clicca per aprire il Radar Live");
+                    LocalizationService.T(lang, "alert_heavy_rain"),
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_yellow_rain_at", hhmm));
             }
 
             if (IsSnowCode(w.WeatherCode))
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "ALLERTA NEVE",
-                    "In corso",
-                    "Allerta Gialla · Precipitazioni nevose in corso");
+                    LocalizationService.T(lang, "alert_snow"),
+                    nowLabel,
+                    LocalizationService.T(lang, "alert_yellow_snow_now"));
             }
 
             HourlyForecastPoint? upcomingSnowAlert = FindFirstMatching(horizon, 12, localNow, hp => IsSnowCode(hp.WeatherCode));
@@ -502,18 +480,18 @@ namespace Dsk.Weather.Services
                 string hhmm = upcomingSnowAlert.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "ALLERTA NEVE",
-                    $"Alle {hhmm}",
-                    $"Allerta Gialla · Neve prevista alle {hhmm}");
+                    LocalizationService.T(lang, "alert_snow"),
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_yellow_snow_at", hhmm));
             }
 
             if (w.WeatherCode is 45 or 48)
             {
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "NEBBIA FITTA",
-                    "Visibilità ridotta",
-                    "Allerta Gialla · Nebbia presente, visibilità ridotta");
+                    LocalizationService.T(lang, "alert_fog"),
+                    LocalizationService.T(lang, "alert_reduced_vis"),
+                    LocalizationService.T(lang, "alert_yellow_fog_now"));
             }
 
             HourlyForecastPoint? fogAlert = FindFirstMatching(horizon, 8, localNow, hp => hp.WeatherCode is 45 or 48);
@@ -522,19 +500,20 @@ namespace Dsk.Weather.Services
                 string hhmm = fogAlert.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "NEBBIA FITTA",
-                    $"Alle {hhmm}",
-                    $"Allerta Gialla · Formazione di nebbia prevista verso le {hhmm}");
+                    LocalizationService.T(lang, "alert_fog"),
+                    LocalizationService.Format(lang, "alert_at", hhmm),
+                    LocalizationService.Format(lang, "alert_yellow_fog_at", hhmm));
             }
 
             if (w.IsDay && w.CurrentUvIndex >= 8.0)
             {
                 string uvFormatted = w.CurrentUvIndex.ToString("0.#", CultureInfo.InvariantCulture);
+                string uvLvl = DescribeUvLevelItalian(w.CurrentUvIndex, lang);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "UV ELEVATO",
-                    $"Indice {uvFormatted}",
-                    $"Allerta Gialla · Indice UV {uvFormatted} ({DescribeUvLevelItalian(w.CurrentUvIndex)})");
+                    LocalizationService.T(lang, "alert_uv_high"),
+                    LocalizationService.Format(lang, "alert_uv_idx", uvFormatted),
+                    LocalizationService.Format(lang, "alert_yellow_uv", uvFormatted, uvLvl));
             }
 
             if (w.TemperatureC >= 34.0 || w.ApparentTemperatureC >= 36.0)
@@ -542,9 +521,9 @@ namespace Dsk.Weather.Services
                 string heatStr = FormatTemp(w.TemperatureC, unit);
                 return new WeatherAlertInfo(
                     WeatherAlertLevel.Yellow,
-                    "CALDO INTENSO",
-                    $"Attuale {heatStr}",
-                    $"Allerta Gialla · Caldo intenso ({heatStr}) nelle ore centrali");
+                    LocalizationService.T(lang, "alert_heat"),
+                    LocalizationService.Format(lang, "alert_current_temp", heatStr),
+                    LocalizationService.Format(lang, "alert_yellow_heat", heatStr));
             }
 
             return WeatherAlertInfo.None;

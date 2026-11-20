@@ -185,7 +185,6 @@ namespace Dsk.Weather
                     _saveDebounceTimer?.Start();
                 },
                 () => _widgetWindow?.ResetToDefaultPosition(),
-                previewKind => _widgetWindow?.SetAnimationPreview(previewKind),
                 () => _widgetWindow is not null ? _widgetWindow.RefreshWeatherAsync() : System.Threading.Tasks.Task.CompletedTask,
                 _widgetWindow?.CurrentPalette);
 

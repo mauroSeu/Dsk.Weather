@@ -18,7 +18,6 @@ namespace Dsk.Weather.Windows
         private readonly AutostartService _autostartService;
         private readonly Action<WidgetSettings> _onSettingsChanged;
         private readonly Action _onResetPosition;
-        private readonly Action<WeatherIconKind?> _onPreviewChanged;
         private readonly Func<Task> _onRefreshWeatherAsync;
 
         private bool _isInitializing = true;
@@ -30,7 +29,6 @@ namespace Dsk.Weather.Windows
             AutostartService autostartService,
             Action<WidgetSettings> onSettingsChanged,
             Action onResetPosition,
-            Action<WeatherIconKind?>? onPreviewChanged = null,
             Func<Task>? onRefreshWeatherAsync = null,
             MaterialThemePalette? initialPalette = null)
         {
@@ -40,14 +38,12 @@ namespace Dsk.Weather.Windows
             _autostartService = autostartService;
             _onSettingsChanged = onSettingsChanged;
             _onResetPosition = onResetPosition;
-            _onPreviewChanged = onPreviewChanged ?? (_ => { });
             _onRefreshWeatherAsync = onRefreshWeatherAsync ?? (() => Task.CompletedTask);
             _currentPalette = initialPalette ?? new MaterialColorService().BuildPalette(_draft.ThemeMode);
 
             InitializeComponent();
 
             ApplyPalette(_currentPalette, _draft.ThemeMode == WidgetThemeMode.MaterialLight);
-            Closed += (_, _) => _onPreviewChanged(null);
             PopulateUiFromDraft();
         }
 
@@ -91,10 +87,10 @@ namespace Dsk.Weather.Windows
 
                 SelectComboByTag(LayoutCombo, _draft.LayoutStyle.ToString());
                 SelectComboByTag(ThemeCombo, _draft.ThemeMode.ToString());
+                SelectComboByTag(LanguageCombo, _draft.Language);
                 SelectComboByTag(UnitCombo, _draft.TempUnit.ToString());
                 SelectComboByTag(WeatherModelCombo, _draft.WeatherModel.ToString());
                 SelectComboByTag(PinModeCombo, _draft.PinMode.ToString());
-                SelectComboByTag(PreviewSceneCombo, "Real");
 
                 ScaleSlider.Value = _draft.Scale;
                 ScaleValueText.Text = $"{Math.Round(_draft.Scale * 100)}%";
@@ -112,6 +108,7 @@ namespace Dsk.Weather.Windows
                 LockPositionCheck.IsChecked = _draft.LockPosition;
                 AutostartCheck.IsChecked = _autostartService.IsEnabled();
                 DefaultStyleCheck.IsChecked = _draft.IsDefaultStyle();
+                ApplyLanguage(_draft.Language);
             }
             finally
             {
@@ -126,15 +123,11 @@ namespace Dsk.Weather.Windows
                 return;
             }
 
-            bool isRealPreview = PreviewSceneCombo?.SelectedItem is ComboBoxItem cbi
-                ? string.Equals(cbi.Tag as string, "Real", StringComparison.Ordinal)
-                : true;
-
             bool prev = _isInitializing;
             _isInitializing = true;
             try
             {
-                DefaultStyleCheck.IsChecked = _draft.IsDefaultStyle() && isRealPreview;
+                DefaultStyleCheck.IsChecked = _draft.IsDefaultStyle();
             }
             finally
             {
@@ -152,7 +145,6 @@ namespace Dsk.Weather.Windows
             if (DefaultStyleCheck.IsChecked == true)
             {
                 _draft.ResetStyleToDefaults();
-                _onPreviewChanged(null);
                 PopulateUiFromDraft();
                 _onSettingsChanged(_draft);
             }
@@ -272,10 +264,15 @@ namespace Dsk.Weather.Windows
 
             _draft.LayoutStyle = ParseSelectedTag(LayoutCombo, _draft.LayoutStyle);
             _draft.ThemeMode = ParseSelectedTag(ThemeCombo, _draft.ThemeMode);
+            if (LanguageCombo?.SelectedItem is ComboBoxItem langItem && langItem.Tag is string langTag)
+            {
+                _draft.Language = LocalizationService.NormalizeLanguage(langTag);
+            }
             _draft.TempUnit = ParseSelectedTag(UnitCombo, _draft.TempUnit);
             _draft.WeatherModel = ParseSelectedTag(WeatherModelCombo, _draft.WeatherModel);
             _draft.PinMode = ParseSelectedTag(PinModeCombo, _draft.PinMode);
 
+            ApplyLanguage(_draft.Language);
             SyncDefaultStyleSwitch();
             _onSettingsChanged(_draft);
         }
@@ -540,25 +537,62 @@ namespace Dsk.Weather.Windows
             Close();
         }
 
-        private void PreviewSceneCombo_Changed(object sender, SelectionChangedEventArgs e)
+        public void ApplyLanguage(string? language)
         {
-            if (_isInitializing || _draft is null)
-            {
-                return;
-            }
+            string lang = LocalizationService.NormalizeLanguage(language);
+            Title = $"Dsk.Weather — {LocalizationService.T(lang, "set_title")}";
+            HeaderTitleText.Text = LocalizationService.T(lang, "set_title");
+            HeaderSubtitleText.Text = LocalizationService.T(lang, "set_subtitle");
+            SecLocationsTitle.Text = LocalizationService.T(lang, "set_sec_locations");
+            ActiveLocationCaption.Text = LocalizationService.T(lang, "set_active_city");
+            FavoritesHintText.Text = LocalizationService.T(lang, "set_saved_cities");
+            BtnAddLocation.Content = LocalizationService.T(lang, "set_add_location");
+            BtnSearchCity.Content = LocalizationService.T(lang, "set_btn_search");
+            CitySearchBox.ToolTip = LocalizationService.T(lang, "set_search_hint");
 
-            if (PreviewSceneCombo.SelectedItem is ComboBoxItem cbi &&
-                cbi.Tag is string tag &&
-                Enum.TryParse<WeatherIconKind>(tag, out WeatherIconKind kind))
-            {
-                _onPreviewChanged(kind);
-            }
-            else
-            {
-                _onPreviewChanged(null);
-            }
+            SecStyleTitle.Text = LocalizationService.T(lang, "set_sec_style");
+            DefaultStyleCheck.Content = LocalizationService.T(lang, "set_default_style");
+            LayoutLabel.Text = LocalizationService.T(lang, "set_layout");
+            CbiLayoutCard.Content = LocalizationService.T(lang, "menu_style_card");
+            CbiLayoutMinimal.Content = LocalizationService.T(lang, "menu_style_minimal");
+            CbiLayoutCompact.Content = LocalizationService.T(lang, "menu_style_compact");
+            ThemeLabel.Text = LocalizationService.T(lang, "set_theme");
+            CbiThemeDynamic.Content = LocalizationService.T(lang, "menu_theme_dynamic");
+            CbiThemeDark.Content = LocalizationService.T(lang, "menu_theme_dark");
+            CbiThemeGlass.Content = LocalizationService.T(lang, "menu_theme_glass");
+            CbiThemeLight.Content = LocalizationService.T(lang, "menu_theme_light");
+            ScaleLabel.Text = LocalizationService.T(lang, "set_scale");
+            OpacityLabel.Text = LocalizationService.T(lang, "set_opacity");
+            DynamicAtmosphereCheck.Content = LocalizationService.T(lang, "set_dyn_atmosphere");
+            WeatherAnimationsCheck.Content = LocalizationService.T(lang, "set_weather_anim");
+            LanguageLabel.Text = LocalizationService.T(lang, "set_language");
 
-            SyncDefaultStyleSwitch();
+            SecClockTitle.Text = LocalizationService.T(lang, "set_sec_clock");
+            Use24HourCheck.Content = LocalizationService.T(lang, "set_24h");
+            ShowSecondsCheck.Content = LocalizationService.T(lang, "set_seconds");
+            ShowHourlyCheck.Content = LocalizationService.T(lang, "set_hourly_strip");
+            EnableWeatherAlertsCheck.Content = LocalizationService.T(lang, "set_weather_alerts");
+            TempUnitLabel.Text = LocalizationService.T(lang, "set_temp_unit");
+            CbiTempC.Content = LocalizationService.T(lang, "set_temp_c");
+            CbiTempF.Content = LocalizationService.T(lang, "set_temp_f");
+            WeatherModelLabel.Text = LocalizationService.T(lang, "set_weather_model");
+            CbiModelAuto.Content = LocalizationService.T(lang, "set_model_auto");
+            CbiModelEcmwf.Content = LocalizationService.T(lang, "set_model_ecmwf");
+            CbiModelIcon.Content = LocalizationService.T(lang, "set_model_icon");
+            QuickNoteLabel.Text = LocalizationService.T(lang, "set_quick_note");
+            BtnClearNote.Content = LocalizationService.T(lang, "set_btn_clear");
+
+            SecWinTitle.Text = LocalizationService.T(lang, "set_sec_win");
+            PinModeLabel.Text = LocalizationService.T(lang, "set_pin_mode");
+            CbiPinDesktop.Content = LocalizationService.T(lang, "set_pin_desktop");
+            CbiPinBottom.Content = LocalizationService.T(lang, "set_pin_bottom");
+            CbiPinTop.Content = LocalizationService.T(lang, "set_pin_top");
+            LockPositionCheck.Content = LocalizationService.T(lang, "set_lock_pos");
+            AutostartCheck.Content = LocalizationService.T(lang, "set_autostart");
+
+            BtnResetPositionBottom.Content = LocalizationService.T(lang, "set_btn_reset_pos");
+            BtnRefreshWeatherBottom.Content = LocalizationService.T(lang, "set_btn_refresh");
+            BtnCloseBottom.Content = LocalizationService.T(lang, "set_btn_close");
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e)

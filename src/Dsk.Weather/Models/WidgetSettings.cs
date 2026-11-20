@@ -84,6 +84,7 @@ namespace Dsk.Weather.Models
         public bool EnableDynamicAtmosphere { get; set; } = true;
         public bool EnableWeatherAnimations { get; set; } = true;
         public bool EnableWeatherAlerts { get; set; } = true;
+        public string Language { get; set; } = "it";
         public string QuickNote { get; set; } = string.Empty;
         public int RadarZoom { get; set; } = 7;
         public string CityName { get; set; } = string.Empty;
@@ -123,6 +124,7 @@ namespace Dsk.Weather.Models
                 QuickNote = QuickNote.Substring(0, 90);
             }
 
+            Language = Dsk.Weather.Services.LocalizationService.NormalizeLanguage(Language);
             CityName ??= string.Empty;
             CountryName ??= string.Empty;
 
@@ -291,6 +293,7 @@ namespace Dsk.Weather.Models
                 EnableDynamicAtmosphere = EnableDynamicAtmosphere,
                 EnableWeatherAnimations = EnableWeatherAnimations,
                 EnableWeatherAlerts = EnableWeatherAlerts,
+                Language = Language,
                 QuickNote = QuickNote,
                 RadarZoom = RadarZoom,
                 CityName = CityName,

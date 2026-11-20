@@ -4,7 +4,7 @@
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 ![API Keys](https://img.shields.io/badge/API%20Keys-Zero%20Required-success?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-20%2F20%20Passing-brightgreen?style=flat-square)
+![Tests](https://img.shields.io/badge/Tests-21%2F21%20Passing-brightgreen?style=flat-square)
 
 Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepilogo + Orologio + Allerte Meteo + Radar Precipitazioni Live*), sviluppato in **C# .NET 8 WPF**, 100% gratuito, open-source, senza dipendenze NuGet di terze parti, senza API key a consumo e a carico GPU LLM zero.
 
@@ -16,7 +16,7 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 
 ---
 
-## Funzionalità Principali (`v1.3.4`)
+## Funzionalità Principali (`v1.3.5`)
 
 - **Integrazione nativa sul Desktop:** ancorato sul livello desktop (`DesktopPinned`, o `AlwaysOnTop` / `BottomMost` a scelta), con geometria fissa compatta (`338 px` sia per Card che per Drawer), nascosto dalla taskbar e da `Alt + Tab`, con protezione automatica della visibilità dopo `Win + D` (*Mostra Desktop*).
 - **Material You & Atmosfera Dinamica:** estrae automaticamente il colore dominante dallo sfondo attivo di Windows (con fallback sull'accento DWM) e applica una sfumatura discreta adattata a meteo e fascia oraria (inclusa golden hour) sia alla Card che al pannello espandibile Previsioni / Radar.
@@ -27,7 +27,7 @@ Widget meteo desktop nativo per **Windows 11** in stile **Material You** (*Riepi
 - **Previsioni 7 Giorni:** tabella settimanale nel pannello espandibile con formato data `Lun 23`, gocciolina + `% pioggia`, triangolino direzionale del vento + `km/h`, e `Min° / Max°`.
 - **Radar Precipitazioni Live OpenStreetMap:** scheda dedicata **Radar Live** su mappe **OpenStreetMap** senza watermark, con passaggio **automatico alba/tramonto** tra modalità **diurna chiara** e **notturna scura** (più switch manuale `◐`), 4 livelli di zoom `Z5–Z8` anche tramite rotellina del mouse, anello di portata in `km`, onda sonar sul pin città e timeline 8 fotogrammi **RainViewer** con cross-fade (`0%` CPU a pannello chiuso).
 - **Posizioni Preferite & Cambio Rapido 1-Click:** salva più località preferite nelle Impostazioni e alterna istantaneamente tra di esse con **1 click** direttamente sulla riga località della card (o dal menu tasto destro).
-- **Finestra Impostazioni Material You:** pannello floating arrotondato sincronizzato live con la palette attiva del widget, completo di switch a pillola, slider custom e anteprima dal vivo delle scene meteo.
+- **Finestra Impostazioni Material You & Multilingua (6 Lingue):** pannello floating arrotondato sincronizzato live con la palette attiva del widget, completo di switch a pillola, slider custom e **selettore lingua live** (*Italiano, English, Deutsch, Nederlands, Español, Português*).
 - **Scelta Modello Meteo Italia + Ripresa Automatica:** selezione tra *Automatico (Best Match)*, *ECMWF IFS* e *DWD ICON* su **Open-Meteo**, salvataggio atomico con retry + debounce e ripresa automatica dopo standby o ripristino rete.
 
 ---
@@ -62,7 +62,7 @@ Per gestire l'avvio automatico con Windows:
 # Compilazione intera solution (App + Test)
 dotnet build Dsk.Weather.sln -c Release
 
-# Esecuzione suite test unitari deterministici (20/20 check)
+# Esecuzione suite test unitari deterministici (21/21 check)
 dotnet tests\Dsk.Weather.Tests\bin\Release\net8.0-windows\Dsk.Weather.Tests.dll
 
 # Pubblicazione pacchetto finale in dist\

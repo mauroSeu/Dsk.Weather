@@ -505,18 +505,21 @@
                     </Border>
 
                     <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                        <TextBlock Text="Impostazioni"
+                        <TextBlock x:Name="HeaderTitleText"
+                                   Text="Impostazioni"
                                    FontFamily="Segoe UI Variable Display, Segoe UI"
                                    FontSize="18"
                                    FontWeight="SemiBold"
                                    Foreground="{DynamicResource DynText}" />
-                        <TextBlock Text="Dsk.Weather · Anteprima Live"
+                        <TextBlock x:Name="HeaderSubtitleText"
+                                   Text="Dsk.Weather · Anteprima Live"
                                    FontSize="11.5"
                                    Foreground="{DynamicResource DynMuted}"
                                    Margin="0,1,0,0" />
                     </StackPanel>
 
                     <Button Grid.Column="2"
+                            x:Name="BtnHeaderClose"
                             Content="&#xE711;"
                             Style="{StaticResource HeaderCloseButtonStyle}"
                             VerticalAlignment="Center"
@@ -537,7 +540,7 @@
                         <!-- 1. Località Meteo -->
                         <Border Style="{StaticResource SectionCardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Località Meteo" Style="{StaticResource SectionTitleStyle}" />
+                                <TextBlock x:Name="SecLocationsTitle" Text="Località Meteo" Style="{StaticResource SectionTitleStyle}" />
 
                                 <Border Background="{DynamicResource DynInputBg}"
                                         BorderBrush="{DynamicResource DynBorder}"
@@ -552,7 +555,7 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                            <TextBlock Text="Località attiva" FontSize="11" Foreground="{DynamicResource DynMuted}" />
+                                            <TextBlock x:Name="ActiveLocationCaption" Text="Località attiva" FontSize="11" Foreground="{DynamicResource DynMuted}" />
                                             <TextBlock x:Name="ActiveLocationText"
                                                        FontSize="13.5"
                                                        FontWeight="SemiBold"
@@ -579,7 +582,8 @@
                                 </Border>
 
                                 <!-- Lista Posizioni Preferite + Bottone Aggiungi posizione -->
-                                <TextBlock Text="Posizioni preferite (1 click per cambiare)"
+                                <TextBlock x:Name="FavoritesHintText"
+                                           Text="Posizioni preferite (1 click per cambiare)"
                                            FontSize="11.5"
                                            Foreground="{DynamicResource DynMuted}"
                                            Margin="2,0,0,6" />
@@ -700,7 +704,7 @@
                         <!-- 2. Stile & Colori -->
                         <Border Style="{StaticResource SectionCardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Stile &amp; Colori (Anteprima Live)" Style="{StaticResource SectionTitleStyle}" />
+                                <TextBlock x:Name="SecStyleTitle" Text="Stile &amp; Colori (Anteprima Live)" Style="{StaticResource SectionTitleStyle}" />
 
                                 <CheckBox x:Name="DefaultStyleCheck"
                                           Content="Usa stile predefinito (consigliato)"
@@ -715,14 +719,14 @@
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Layout widget" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="LayoutLabel" Grid.Column="0" Text="Layout widget" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <ComboBox Grid.Column="1"
                                               x:Name="LayoutCombo"
                                               Style="{StaticResource DarkComboBoxStyle}"
                                               SelectionChanged="SettingCombo_Changed">
-                                        <ComboBoxItem Content="Card Completa (Riepilogo)" Tag="PixelCard" />
-                                        <ComboBoxItem Content="Minimal Trasparente" Tag="PixelMinimalTransparent" />
-                                        <ComboBoxItem Content="Material Compatto" Tag="MaterialCompact" />
+                                        <ComboBoxItem x:Name="CbiLayoutCard" Content="Card Completa (Riepilogo)" Tag="PixelCard" />
+                                        <ComboBoxItem x:Name="CbiLayoutMinimal" Content="Minimal Trasparente" Tag="PixelMinimalTransparent" />
+                                        <ComboBoxItem x:Name="CbiLayoutCompact" Content="Material Compatto" Tag="MaterialCompact" />
                                     </ComboBox>
                                 </Grid>
 
@@ -731,15 +735,15 @@
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Tema colori" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="ThemeLabel" Grid.Column="0" Text="Tema colori" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <ComboBox Grid.Column="1"
                                               x:Name="ThemeCombo"
                                               Style="{StaticResource DarkComboBoxStyle}"
                                               SelectionChanged="SettingCombo_Changed">
-                                        <ComboBoxItem Content="Dinamico dallo sfondo (Material You)" Tag="DynamicWallpaper" />
-                                        <ComboBoxItem Content="Notte Scura" Tag="PixelDark" />
-                                        <ComboBoxItem Content="Vetro Scuro" Tag="GlassDark" />
-                                        <ComboBoxItem Content="Material Chiaro" Tag="MaterialLight" />
+                                        <ComboBoxItem x:Name="CbiThemeDynamic" Content="Dinamico dallo sfondo (Material You)" Tag="DynamicWallpaper" />
+                                        <ComboBoxItem x:Name="CbiThemeDark" Content="Notte Scura" Tag="PixelDark" />
+                                        <ComboBoxItem x:Name="CbiThemeGlass" Content="Vetro Scuro" Tag="GlassDark" />
+                                        <ComboBoxItem x:Name="CbiThemeLight" Content="Material Chiaro" Tag="MaterialLight" />
                                     </ComboBox>
                                 </Grid>
 
@@ -749,7 +753,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="44" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Dimensione" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="ScaleLabel" Grid.Column="0" Text="Dimensione" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <Slider Grid.Column="1"
                                             x:Name="ScaleSlider"
                                             Style="{StaticResource MaterialSliderStyle}"
@@ -775,7 +779,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="44" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Opacità card" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="OpacityLabel" Grid.Column="0" Text="Opacità card" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <Slider Grid.Column="1"
                                             x:Name="OpacitySlider"
                                             Style="{StaticResource MaterialSliderStyle}"
@@ -812,19 +816,17 @@
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Anteprima scena" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="LanguageLabel" Grid.Column="0" Text="Lingua" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <ComboBox Grid.Column="1"
-                                              x:Name="PreviewSceneCombo"
+                                              x:Name="LanguageCombo"
                                               Style="{StaticResource DarkComboBoxStyle}"
-                                              SelectionChanged="PreviewSceneCombo_Changed">
-                                        <ComboBoxItem Content="Meteo reale (Attuale)" Tag="Real" />
-                                        <ComboBoxItem Content="Sereno giorno (Sole)" Tag="ClearDay" />
-                                        <ComboBoxItem Content="Notte stellata" Tag="ClearNight" />
-                                        <ComboBoxItem Content="Nuvoloso" Tag="Cloudy" />
-                                        <ComboBoxItem Content="Pioggia" Tag="Rain" />
-                                        <ComboBoxItem Content="Temporale (Lampi)" Tag="Thunderstorm" />
-                                        <ComboBoxItem Content="Neve" Tag="Snow" />
-                                        <ComboBoxItem Content="Nebbia" Tag="Fog" />
+                                              SelectionChanged="SettingCombo_Changed">
+                                        <ComboBoxItem Content="Italiano" Tag="it" />
+                                        <ComboBoxItem Content="English" Tag="en" />
+                                        <ComboBoxItem Content="Deutsch" Tag="de" />
+                                        <ComboBoxItem Content="Nederlands" Tag="nl" />
+                                        <ComboBoxItem Content="Español" Tag="es" />
+                                        <ComboBoxItem Content="Português" Tag="pt" />
                                     </ComboBox>
                                 </Grid>
                             </StackPanel>
@@ -833,7 +835,7 @@
                         <!-- 3. Orologio & Meteo -->
                         <Border Style="{StaticResource SectionCardStyle}">
                             <StackPanel>
-                                <TextBlock Text="Orologio &amp; Meteo" Style="{StaticResource SectionTitleStyle}" />
+                                <TextBlock x:Name="SecClockTitle" Text="Orologio &amp; Meteo" Style="{StaticResource SectionTitleStyle}" />
 
                                 <CheckBox x:Name="Use24HourCheck"
                                           Content="Usa formato 24 ore"
@@ -861,13 +863,13 @@
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Unità temperatura" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="TempUnitLabel" Grid.Column="0" Text="Unità temperatura" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <ComboBox Grid.Column="1"
                                               x:Name="UnitCombo"
                                               Style="{StaticResource DarkComboBoxStyle}"
                                               SelectionChanged="SettingCombo_Changed">
-                                        <ComboBoxItem Content="Celsius (°C)" Tag="Celsius" />
-                                        <ComboBoxItem Content="Fahrenheit (°F)" Tag="Fahrenheit" />
+                                        <ComboBoxItem x:Name="CbiTempC" Content="Celsius (°C)" Tag="Celsius" />
+                                        <ComboBoxItem x:Name="CbiTempF" Content="Fahrenheit (°F)" Tag="Fahrenheit" />
                                     </ComboBox>
                                 </Grid>
 
@@ -876,14 +878,14 @@
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Modello meteo Italia" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="WeatherModelLabel" Grid.Column="0" Text="Modello meteo" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <ComboBox Grid.Column="1"
                                               x:Name="WeatherModelCombo"
                                               Style="{StaticResource DarkComboBoxStyle}"
                                               SelectionChanged="SettingCombo_Changed">
-                                        <ComboBoxItem Content="Automatico (Best Match)" Tag="Auto" />
-                                        <ComboBoxItem Content="ECMWF IFS (Alta precisione)" Tag="EcmwfIfs" />
-                                        <ComboBoxItem Content="DWD ICON (Dettaglio locale)" Tag="DwdIcon" />
+                                        <ComboBoxItem x:Name="CbiModelAuto" Content="Automatico (Best Match)" Tag="Auto" />
+                                        <ComboBoxItem x:Name="CbiModelEcmwf" Content="ECMWF IFS (Alta precisione)" Tag="EcmwfIfs" />
+                                        <ComboBoxItem x:Name="CbiModelIcon" Content="DWD ICON (Dettaglio locale)" Tag="DwdIcon" />
                                     </ComboBox>
                                 </Grid>
 
@@ -893,7 +895,7 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Promemoria rapido" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="QuickNoteLabel" Grid.Column="0" Text="Promemoria rapido" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <TextBox Grid.Column="1"
                                              x:Name="QuickNoteBox"
                                              Style="{StaticResource DarkTextBoxStyle}"
@@ -915,21 +917,21 @@
                         <!-- 4. Comportamento su Windows 11 -->
                         <Border Style="{StaticResource SectionCardStyle}" Margin="0">
                             <StackPanel>
-                                <TextBlock Text="Comportamento su Windows 11" Style="{StaticResource SectionTitleStyle}" />
+                                <TextBlock x:Name="SecWinTitle" Text="Comportamento su Windows 11" Style="{StaticResource SectionTitleStyle}" />
 
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="130" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Livello finestra" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
+                                    <TextBlock x:Name="PinModeLabel" Grid.Column="0" Text="Livello finestra" VerticalAlignment="Center" Foreground="{DynamicResource DynMuted}" />
                                     <ComboBox Grid.Column="1"
                                               x:Name="PinModeCombo"
                                               Style="{StaticResource DarkComboBoxStyle}"
                                               SelectionChanged="SettingCombo_Changed">
-                                        <ComboBoxItem Content="Fissato sul Desktop (stile Android)" Tag="DesktopPinned" />
-                                        <ComboBoxItem Content="Sotto le altre finestre" Tag="BottomMost" />
-                                        <ComboBoxItem Content="Sempre in primo piano" Tag="AlwaysOnTop" />
+                                        <ComboBoxItem x:Name="CbiPinDesktop" Content="Fissato sul Desktop" Tag="DesktopPinned" />
+                                        <ComboBoxItem x:Name="CbiPinBottom" Content="Sotto le altre finestre" Tag="BottomMost" />
+                                        <ComboBoxItem x:Name="CbiPinTop" Content="Sempre in primo piano" Tag="AlwaysOnTop" />
                                     </ComboBox>
                                 </Grid>
 
@@ -964,6 +966,7 @@
                         </Grid.ColumnDefinitions>
 
                         <Button Grid.Column="0"
+                                x:Name="BtnResetPositionBottom"
                                 Content="Ripristina posizione"
                                 Style="{StaticResource SettingsButtonStyle}"
                                 Margin="0,0,8,0"
@@ -977,6 +980,7 @@
                                 Click="BtnRefreshWeather_Click" />
 
                         <Button Grid.Column="3"
+                                x:Name="BtnCloseBottom"
                                 Content="Chiudi"
                                 Style="{StaticResource SettingsAccentButtonStyle}"
                                 MinWidth="96"

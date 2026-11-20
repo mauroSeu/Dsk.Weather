@@ -43,7 +43,6 @@ namespace Dsk.Weather.Windows
 
         private WidgetSettings _settings;
         private WeatherSnapshot? _currentWeather;
-        private WeatherIconKind? _previewWeatherOverride;
         private MaterialThemePalette _currentPalette;
         private CancellationTokenSource? _weatherFetchCts;
 
@@ -236,12 +235,6 @@ namespace Dsk.Weather.Windows
             {
                 _ = RefreshWeatherAsync();
             }
-        }
-
-        public void SetAnimationPreview(WeatherIconKind? previewKind)
-        {
-            _previewWeatherOverride = previewKind;
-            ApplyThemeAndLayout();
         }
 
         public void CenterOnPrimaryScreen()
@@ -445,7 +438,7 @@ namespace Dsk.Weather.Windows
 
             bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
             bool isCompact = _settings.LayoutStyle == WidgetLayoutStyle.MaterialCompact;
-            WeatherSnapshot? atmosphereWeather = BuildAtmosphereSnapshotForTheme();
+            WeatherSnapshot? atmosphereWeather = _currentWeather;
 
             LayoutPixelCard.Margin = _settings.ShowHourlyStrip
                 ? new Thickness(18, 14, 18, 0)
@@ -585,46 +578,42 @@ namespace Dsk.Weather.Windows
 
             // Animazioni meteo (sfondo card e icone hero)
             bool animateIcons = _settings.EnableWeatherAnimations;
-            CardWeatherIcon.IconKind = _previewWeatherOverride;
-            MinimalWeatherIcon.IconKind = _previewWeatherOverride;
-            CompactWeatherIcon.IconKind = _previewWeatherOverride;
+            CardWeatherIcon.IconKind = null;
+            MinimalWeatherIcon.IconKind = null;
+            CompactWeatherIcon.IconKind = null;
             CardWeatherIcon.Animate = animateIcons;
             MinimalWeatherIcon.Animate = animateIcons;
             CompactWeatherIcon.Animate = animateIcons;
 
-            WeatherIconKind sceneKind = _previewWeatherOverride
-                ?? (_currentWeather is not null
-                    ? WeatherService.MapWmoToIcon(_currentWeather.WeatherCode, _currentWeather.IsDay)
-                    : WeatherIconKind.ClearDay);
+            WeatherIconKind sceneKind = _currentWeather is not null
+                ? WeatherService.MapWmoToIcon(_currentWeather.WeatherCode, _currentWeather.IsDay)
+                : WeatherIconKind.ClearDay;
             bool sceneEnabled = _settings.EnableWeatherAnimations &&
                                 _settings.LayoutStyle != WidgetLayoutStyle.PixelMinimalTransparent;
             WeatherScene.Configure(sceneKind, sceneEnabled, _settings.ThemeMode == WidgetThemeMode.MaterialLight);
+            ApplyLanguageToChrome();
             UpdateAlertBadge();
             UpdateQuickCitySwitchHints();
             RebuildHourlyVisuals(resetScroll: false);
         }
 
-        private WeatherSnapshot? BuildAtmosphereSnapshotForTheme()
+        private void ApplyLanguageToChrome()
         {
-            if (!_previewWeatherOverride.HasValue)
-            {
-                return _currentWeather;
-            }
+            string lang = _settings.Language;
+            TabForecastLabel.Text = LocalizationService.T(lang, "tab_forecast");
+            TabRadarLabel.Text = LocalizationService.T(lang, "tab_radar");
+            BtnCloseDrawer.ToolTip = LocalizationService.T(lang, "close_panel_tooltip");
+            BtnSettings.ToolTip = LocalizationService.T(lang, "settings_tooltip");
 
-            return _previewWeatherOverride.Value switch
-            {
-                WeatherIconKind.ClearDay => new WeatherSnapshot { WeatherCode = 0, IsDay = true },
-                WeatherIconKind.ClearNight => new WeatherSnapshot { WeatherCode = 0, IsDay = false },
-                WeatherIconKind.PartlyCloudyDay => new WeatherSnapshot { WeatherCode = 2, IsDay = true },
-                WeatherIconKind.PartlyCloudyNight => new WeatherSnapshot { WeatherCode = 2, IsDay = false },
-                WeatherIconKind.Cloudy => new WeatherSnapshot { WeatherCode = 3, IsDay = true },
-                WeatherIconKind.Fog => new WeatherSnapshot { WeatherCode = 45, IsDay = true },
-                WeatherIconKind.Drizzle => new WeatherSnapshot { WeatherCode = 51, IsDay = true },
-                WeatherIconKind.Rain => new WeatherSnapshot { WeatherCode = 63, IsDay = true },
-                WeatherIconKind.Snow => new WeatherSnapshot { WeatherCode = 73, IsDay = true },
-                WeatherIconKind.Thunderstorm => new WeatherSnapshot { WeatherCode = 95, IsDay = true },
-                _ => _currentWeather
-            };
+            string forecastTip = LocalizationService.T(lang, "click_forecast_tooltip");
+            CardWeatherPill.ToolTip = forecastTip;
+            MinimalWeatherPill.ToolTip = forecastTip;
+            CompactWeatherPill.ToolTip = forecastTip;
+
+            ChipSunTitle.Text = LocalizationService.T(lang, "chip_sun_title");
+            ChipUvTitle.Text = LocalizationService.T(lang, "chip_uv_title");
+            ChipWindTitle.Text = LocalizationService.T(lang, "chip_wind_title");
+            RadarView.ApplyLanguage(lang);
         }
 
         private void UpdateDrawerTabVisuals()
@@ -690,26 +679,32 @@ namespace Dsk.Weather.Windows
                 CompactAmPmText.Visibility = amPmVis;
             }
 
-            string dateFull = CapitalizeFirst(now.ToString("dddd, d MMMM", ItalianCulture));
+            CultureInfo culture = LocalizationService.GetCulture(_settings.Language);
+            string dateFull = CapitalizeFirst(now.ToString("dddd, d MMMM", culture), culture);
             if (force || !string.Equals(_lastDisplayedDate, dateFull, StringComparison.Ordinal))
             {
                 _lastDisplayedDate = dateFull;
                 CardDateText.Text = dateFull;
                 MinimalDateText.Text = dateFull;
-                CompactDateText.Text = CapitalizeFirst(now.ToString("ddd d MMM", ItalianCulture));
+                CompactDateText.Text = CapitalizeFirst(now.ToString("ddd d MMM", culture), culture);
             }
         }
 
         private void UpdateWeatherDisplay()
         {
+            string lang = _settings.Language;
+            CultureInfo culture = LocalizationService.GetCulture(lang);
+
             if (_currentWeather is null)
             {
-                string fallbackCity = string.IsNullOrWhiteSpace(_settings.CityName) ? "Rilevamento..." : _settings.CityName;
+                string fallbackCity = string.IsNullOrWhiteSpace(_settings.CityName)
+                    ? LocalizationService.T(lang, "detecting")
+                    : _settings.CityName;
                 CardPillTempText.Text = "--°";
                 CardPillRangeText.Text = string.Empty;
                 CardInsightText.Text = !string.IsNullOrWhiteSpace(_settings.QuickNote)
                     ? $"📌 {_settings.QuickNote}"
-                    : "In attesa dei dati meteo...";
+                    : LocalizationService.T(lang, "waiting_weather");
                 CardSummaryText.Text = fallbackCity;
                 MinimalWeatherText.Text = "--°";
                 MinimalSubText.Text = fallbackCity;
@@ -731,14 +726,15 @@ namespace Dsk.Weather.Windows
             string apparentTemp = WeatherService.FormatTemp(w.ApparentTemperatureC, unit);
             string maxTemp = WeatherService.FormatTemp(w.TodayMaxC, unit);
             string minTemp = WeatherService.FormatTemp(w.TodayMinC, unit);
-            string condition = WeatherService.DescribeWmoCodeItalian(w.WeatherCode);
+            string condition = WeatherService.DescribeWmoCodeItalian(w.WeatherCode, lang);
             string city = string.IsNullOrWhiteSpace(w.CityName) ? _settings.CityName : w.CityName;
-            string cacheTag = w.IsFromCache ? " · Cache" : string.Empty;
+            string cacheTag = w.IsFromCache ? LocalizationService.T(lang, "cache_tag") : string.Empty;
+            string feelsLike = LocalizationService.Format(lang, "feels_like", apparentTemp);
             string insight = !string.IsNullOrWhiteSpace(_settings.QuickNote)
                 ? $"📌 {_settings.QuickNote}"
-                : WeatherService.BuildAtAGlanceInsight(w, DateTime.Now);
+                : WeatherService.BuildAtAGlanceInsight(w, DateTime.Now, lang);
 
-            // PixelCard
+            // Card Completa
             CardWeatherIcon.WeatherCode = w.WeatherCode;
             CardWeatherIcon.IsDay = w.IsDay;
             CardPillTempText.Text = currentTemp;
@@ -747,7 +743,7 @@ namespace Dsk.Weather.Windows
             CardInsightText.Foreground = string.IsNullOrWhiteSpace(_settings.QuickNote)
                 ? MaterialThemePalette.ToBrush(_currentPalette.Primary)
                 : MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
-            CardSummaryText.Text = $"{city} · {condition} · Percepiti {apparentTemp}{cacheTag}";
+            CardSummaryText.Text = $"{city} · {condition} · {feelsLike}{cacheTag}";
 
             // Minimal
             MinimalWeatherIcon.WeatherCode = w.WeatherCode;
@@ -763,19 +759,20 @@ namespace Dsk.Weather.Windows
             CompactLocationText.Text = $"{city} · {condition}";
 
             // Drawer header + chip dettagli
-            string modelTag = WeatherService.DescribeWeatherModelItalian(_settings.WeatherModel);
-            DrawerMetaText.Text = $"{city} · Modello {modelTag} · Percepiti {apparentTemp}{cacheTag}";
+            string modelTag = WeatherService.DescribeWeatherModelItalian(_settings.WeatherModel, lang);
+            string modelWord = LocalizationService.T(lang, "model_word");
+            DrawerMetaText.Text = $"{city} · {modelWord} {modelTag} · {feelsLike}{cacheTag}";
 
             string sunriseStr = w.SunriseLocal?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";
             string sunsetStr = w.SunsetLocal?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "--:--";
             ChipSunText.Text = $"{sunriseStr} / {sunsetStr}";
 
             string uvNum = w.CurrentUvIndex.ToString("0.#", CultureInfo.InvariantCulture);
-            ChipUvText.Text = $"{uvNum} · {WeatherService.DescribeUvLevelItalian(w.CurrentUvIndex)}";
+            ChipUvText.Text = $"{uvNum} · {WeatherService.DescribeUvLevelItalian(w.CurrentUvIndex, lang)}";
 
-            string currentCardinal = WeatherService.DescribeWindDirectionCardinal(w.WindDirectionDeg);
+            string currentCardinal = WeatherService.DescribeWindDirectionCardinal(w.WindDirectionDeg, lang);
             ChipWindArrowRotate.Angle = (w.WindDirectionDeg + 180) % 360;
-            ChipWindBorder.ToolTip = $"Vento da {currentCardinal} ({w.WindDirectionDeg}°) · Umidità {w.RelativeHumidity}%";
+            ChipWindBorder.ToolTip = LocalizationService.Format(lang, "wind_tooltip", currentCardinal, w.WindDirectionDeg, w.RelativeHumidity);
             ChipWindText.Text = $"{Math.Round(w.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture)} km/h · {w.RelativeHumidity}%";
 
             SolidColorBrush primaryText = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
@@ -790,20 +787,20 @@ namespace Dsk.Weather.Windows
             for (int i = 0; i < w.Daily.Count; i++)
             {
                 DailyForecastPoint dp = w.Daily[i];
-                string dayName = CapitalizeFirst(dp.Date.ToString("ddd d", ItalianCulture)).Replace(".", string.Empty);
-                string dayCardinal = WeatherService.DescribeWindDirectionCardinal(dp.WindDirectionDeg);
+                string dayName = CapitalizeFirst(dp.Date.ToString("ddd d", culture), culture).Replace(".", string.Empty);
+                string dayCardinal = WeatherService.DescribeWindDirectionCardinal(dp.WindDirectionDeg, lang);
                 string windSpeedStr = $"{Math.Round(dp.WindSpeedMaxKmh).ToString("0", CultureInfo.InvariantCulture)} km/h";
 
                 dailyVms.Add(new DailyItemViewModel
                 {
                     DayLabel = dayName,
                     WeatherCode = dp.WeatherCode,
-                    ConditionLabel = WeatherService.DescribeWmoCodeItalian(dp.WeatherCode),
+                    ConditionLabel = WeatherService.DescribeWmoCodeItalian(dp.WeatherCode, lang),
                     PrecipLabel = $"{dp.PrecipProbabilityMax}%",
                     PrecipVisibility = Visibility.Visible,
                     WindLabel = windSpeedStr,
                     WindArrowAngle = (dp.WindDirectionDeg + 180) % 360,
-                    WindTooltip = $"Vento da {dayCardinal} ({dp.WindDirectionDeg}°) · {windSpeedStr}",
+                    WindTooltip = LocalizationService.Format(lang, "wind_daily_tooltip", dayCardinal, dp.WindDirectionDeg, windSpeedStr),
                     MinLabel = WeatherService.FormatTemp(dp.MinC, unit),
                     MaxLabel = WeatherService.FormatTemp(dp.MaxC, unit),
                     PrimaryTextBrush = primaryText,
@@ -827,6 +824,8 @@ namespace Dsk.Weather.Windows
                 return;
             }
 
+            string lang = _settings.Language;
+            CultureInfo culture = LocalizationService.GetCulture(lang);
             bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
             SolidColorBrush hourMutedBrush = isMinimal
                 ? MaterialThemePalette.ToBrush(Color.FromRgb(0xE2, 0xE8, 0xF0))
@@ -844,18 +843,20 @@ namespace Dsk.Weather.Windows
             {
                 bool isMidnight = hp.LocalTime.Hour == 0;
                 bool showHourlyPrecip = hp.PrecipProbability >= 20;
-                string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode);
-                string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg);
+                string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode, lang);
+                string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg, lang);
                 string dateLabel = hp.LocalTime.Date > DateTime.Now.Date
-                    ? CapitalizeFirst(hp.LocalTime.ToString("ddd dd/MM", ItalianCulture)) + " · "
+                    ? CapitalizeFirst(hp.LocalTime.ToString("ddd dd/MM", culture), culture) + " · "
                     : string.Empty;
+                string hhmm = hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                string windRounded = Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture);
 
                 hourlyVms.Add(new HourlyItemViewModel
                 {
-                    HourLabel = hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture),
+                    HourLabel = hhmm,
                     PrecipLabel = showHourlyPrecip ? $"{hp.PrecipProbability}%" : string.Empty,
                     PrecipVisibility = showHourlyPrecip ? Visibility.Visible : Visibility.Hidden,
-                    TooltipText = $"{dateLabel}{hp.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture)} · {condText} · Pioggia {hp.PrecipProbability}% · Vento {Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture)} km/h da {hrCardinal}",
+                    TooltipText = LocalizationService.Format(lang, "hourly_tooltip", dateLabel, hhmm, condText, hp.PrecipProbability, windRounded, hrCardinal),
                     WeatherCode = hp.WeatherCode,
                     IsDay = hp.IsDay,
                     HourBrush = isMidnight ? hourAccentBrush : hourMutedBrush,
@@ -1455,33 +1456,7 @@ namespace Dsk.Weather.Windows
                 return;
             }
 
-            WeatherAlertInfo alert;
-            if (_previewWeatherOverride.HasValue)
-            {
-                alert = _previewWeatherOverride.Value switch
-                {
-                    WeatherIconKind.Thunderstorm => new WeatherAlertInfo(
-                        WeatherAlertLevel.Red,
-                        "TEMPORALE",
-                        "Anteprima allerta",
-                        "Allerta Rossa (Anteprima)"),
-                    WeatherIconKind.Snow => new WeatherAlertInfo(
-                        WeatherAlertLevel.Yellow,
-                        "RISCHIO GELO",
-                        "Anteprima allerta",
-                        "Allerta Gialla (Anteprima)"),
-                    WeatherIconKind.Fog => new WeatherAlertInfo(
-                        WeatherAlertLevel.Yellow,
-                        "NEBBIA FITTA",
-                        "Anteprima allerta",
-                        "Allerta Gialla (Anteprima)"),
-                    _ => WeatherAlertInfo.None
-                };
-            }
-            else
-            {
-                alert = WeatherService.EvaluateWeatherAlert(_currentWeather, _settings.TempUnit, DateTime.Now);
-            }
+            WeatherAlertInfo alert = WeatherService.EvaluateWeatherAlert(_currentWeather, _settings.TempUnit, DateTime.Now, _settings.Language);
 
             if (alert.Level == WeatherAlertLevel.None)
             {
@@ -1520,7 +1495,7 @@ namespace Dsk.Weather.Windows
         {
             SavedLocation? next = _settings.PeekNextFavorite();
             Cursor? cursor = next is not null ? Cursors.Hand : null;
-            string? tip = next is not null ? $"Clicca per passare a {next.Name}" : null;
+            string? tip = next is not null ? LocalizationService.Format(_settings.Language, "switch_city_hint", next.Name) : null;
 
             foreach (TextBlock target in new[] { CardSummaryText, MinimalSubText, CompactLocationText, DrawerMetaText })
             {
@@ -1555,7 +1530,29 @@ namespace Dsk.Weather.Windows
 
         private void WidgetContextMenu_Opened(object sender, RoutedEventArgs e)
         {
-            MenuToggleDrawerItem.Header = _isDrawerOpen ? "Nascondi previsioni 7 giorni" : "Mostra previsioni 7 giorni";
+            string lang = _settings.Language;
+            MenuRefreshWeatherItem.Header = LocalizationService.T(lang, "menu_refresh");
+            MenuToggleDrawerItem.Header = LocalizationService.T(lang, _isDrawerOpen ? "menu_hide_drawer" : "menu_show_drawer");
+            MenuOpenRadarItem.Header = LocalizationService.T(lang, "menu_open_radar");
+            MenuFavoriteLocations.Header = LocalizationService.T(lang, "menu_change_city");
+            MenuStyleRootItem.Header = LocalizationService.T(lang, "menu_style");
+            MenuStylePixelCard.Header = LocalizationService.T(lang, "menu_style_card");
+            MenuStyleMinimal.Header = LocalizationService.T(lang, "menu_style_minimal");
+            MenuStyleCompact.Header = LocalizationService.T(lang, "menu_style_compact");
+            MenuThemeRootItem.Header = LocalizationService.T(lang, "menu_theme");
+            MenuThemeDynamic.Header = LocalizationService.T(lang, "menu_theme_dynamic");
+            MenuThemePixelDark.Header = LocalizationService.T(lang, "menu_theme_dark");
+            MenuThemeGlassDark.Header = LocalizationService.T(lang, "menu_theme_glass");
+            MenuThemeMaterialLight.Header = LocalizationService.T(lang, "menu_theme_light");
+            MenuPinRootItem.Header = LocalizationService.T(lang, "menu_pin");
+            MenuPinDesktop.Header = LocalizationService.T(lang, "menu_pin_desktop");
+            MenuPinBottom.Header = LocalizationService.T(lang, "menu_pin_bottom");
+            MenuPinTop.Header = LocalizationService.T(lang, "menu_pin_top");
+            MenuLockPositionItem.Header = LocalizationService.T(lang, "menu_lock_pos");
+            MenuAutostartItem.Header = LocalizationService.T(lang, "menu_autostart");
+            MenuCenterWidgetItem.Header = LocalizationService.T(lang, "menu_center");
+            MenuOpenSettingsItem.Header = LocalizationService.T(lang, "menu_settings");
+            MenuExitItem.Header = LocalizationService.T(lang, "menu_exit");
 
             MenuFavoriteLocations.Items.Clear();
             if (_settings.FavoriteLocations.Count > 1)
@@ -1628,7 +1625,7 @@ namespace Dsk.Weather.Windows
             ApplySettings(next, refreshWeather: false);
         }
 
-        private static string CapitalizeFirst(string input)
+        private static string CapitalizeFirst(string input, CultureInfo culture)
         {
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -1637,10 +1634,10 @@ namespace Dsk.Weather.Windows
 
             if (input.Length == 1)
             {
-                return input.ToUpper(ItalianCulture);
+                return input.ToUpper(culture);
             }
 
-            return char.ToUpper(input[0], ItalianCulture) + input.Substring(1);
+            return char.ToUpper(input[0], culture) + input.Substring(1);
         }
 
         private sealed class HourlyItemViewModel

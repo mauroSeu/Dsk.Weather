@@ -72,23 +72,23 @@
 
         <Grid.ContextMenu>
             <ContextMenu x:Name="WidgetContextMenu" Opened="WidgetContextMenu_Opened">
-                <MenuItem Header="Aggiorna meteo" Click="MenuRefreshWeather_Click" />
+                <MenuItem x:Name="MenuRefreshWeatherItem" Header="Aggiorna meteo" Click="MenuRefreshWeather_Click" />
                 <MenuItem x:Name="MenuToggleDrawerItem" Header="Previsioni 7 giorni" Click="MenuToggleDrawer_Click" />
-                <MenuItem Header="Radar precipitazioni live" Click="MenuOpenRadar_Click" />
+                <MenuItem x:Name="MenuOpenRadarItem" Header="Radar precipitazioni live" Click="MenuOpenRadar_Click" />
                 <MenuItem x:Name="MenuFavoriteLocations" Header="Cambia località" Visibility="Collapsed" />
                 <Separator />
-                <MenuItem Header="Stile widget">
+                <MenuItem x:Name="MenuStyleRootItem" Header="Stile widget">
                     <MenuItem x:Name="MenuStylePixelCard" Header="Card Completa (Riepilogo)" IsCheckable="True" Click="MenuStylePixelCard_Click" />
                     <MenuItem x:Name="MenuStyleMinimal" Header="Minimal Trasparente" IsCheckable="True" Click="MenuStyleMinimal_Click" />
                     <MenuItem x:Name="MenuStyleCompact" Header="Material Compatto" IsCheckable="True" Click="MenuStyleCompact_Click" />
                 </MenuItem>
-                <MenuItem Header="Tema colori">
+                <MenuItem x:Name="MenuThemeRootItem" Header="Tema colori">
                     <MenuItem x:Name="MenuThemeDynamic" Header="Dinamico dallo sfondo (Material You)" IsCheckable="True" Click="MenuThemeDynamic_Click" />
                     <MenuItem x:Name="MenuThemePixelDark" Header="Notte Scura" IsCheckable="True" Click="MenuThemePixelDark_Click" />
                     <MenuItem x:Name="MenuThemeGlassDark" Header="Vetro Scuro" IsCheckable="True" Click="MenuThemeGlassDark_Click" />
                     <MenuItem x:Name="MenuThemeMaterialLight" Header="Material Chiaro" IsCheckable="True" Click="MenuThemeMaterialLight_Click" />
                 </MenuItem>
-                <MenuItem Header="Livello finestra">
+                <MenuItem x:Name="MenuPinRootItem" Header="Livello finestra">
                     <MenuItem x:Name="MenuPinDesktop" Header="Fissato sul Desktop" IsCheckable="True" Click="MenuPinDesktop_Click" />
                     <MenuItem x:Name="MenuPinBottom" Header="Sotto le altre finestre" IsCheckable="True" Click="MenuPinBottom_Click" />
                     <MenuItem x:Name="MenuPinTop" Header="Sempre in primo piano" IsCheckable="True" Click="MenuPinTop_Click" />
@@ -96,10 +96,10 @@
                 <Separator />
                 <MenuItem x:Name="MenuLockPositionItem" Header="Blocca posizione" IsCheckable="True" Click="MenuLockPosition_Click" />
                 <MenuItem x:Name="MenuAutostartItem" Header="Avvio automatico con Windows" IsCheckable="True" Click="MenuAutostart_Click" />
-                <MenuItem Header="Centra sullo schermo" Click="MenuCenterWidget_Click" />
-                <MenuItem Header="Impostazioni..." Click="MenuOpenSettings_Click" />
+                <MenuItem x:Name="MenuCenterWidgetItem" Header="Centra sullo schermo" Click="MenuCenterWidget_Click" />
+                <MenuItem x:Name="MenuOpenSettingsItem" Header="Impostazioni..." Click="MenuOpenSettings_Click" />
                 <Separator />
-                <MenuItem Header="Esci" Click="MenuExit_Click" />
+                <MenuItem x:Name="MenuExitItem" Header="Esci" Click="MenuExit_Click" />
             </ContextMenu>
         </Grid.ContextMenu>
 
@@ -610,6 +610,7 @@
                                        MouseLeftButtonUp="LocationSummary_Click" />
                         </StackPanel>
                         <Button Grid.Column="1"
+                                x:Name="BtnCloseDrawer"
                                 Content="&#xE711;"
                                 Style="{StaticResource HoverIconButtonStyle}"
                                 VerticalAlignment="Top"
