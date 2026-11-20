@@ -681,7 +681,7 @@ namespace Dsk.Weather.Services
             string latStr = lat.ToString("0.####", CultureInfo.InvariantCulture);
             string lonStr = lon.ToString("0.####", CultureInfo.InvariantCulture);
             string modelParam = GetOpenMeteoModelParam(model);
-            return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,wind_gusts_10m,precipitation&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day,wind_gusts_10m,precipitation&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max,wind_gusts_10m_max&timezone=auto&forecast_days=7&models={modelParam}";
+            return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,wind_gusts_10m,precipitation&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day,wind_gusts_10m,precipitation,relative_humidity_2m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max,wind_gusts_10m_max&timezone=auto&forecast_days=7&models={modelParam}";
         }
 
         public static string BuildGeocodingUrl(string query, string lang = "it")
@@ -845,6 +845,7 @@ namespace Dsk.Weather.Services
                 var codes = GetIntArray(hourly, "weather_code");
                 var probs = GetIntArray(hourly, "precipitation_probability");
                 var precips = GetDoubleArray(hourly, "precipitation");
+                var humidities = GetIntArray(hourly, "relative_humidity_2m");
                 var winds = GetDoubleArray(hourly, "wind_speed_10m");
                 var gusts = GetDoubleArray(hourly, "wind_gusts_10m");
                 var windDirs = GetIntArray(hourly, "wind_direction_10m");
@@ -887,6 +888,7 @@ namespace Dsk.Weather.Services
                         WeatherCode = i < codes.Count ? codes[i] : snapshot.WeatherCode,
                         PrecipProbability = i < probs.Count ? probs[i] : 0,
                         PrecipitationMm = i < precips.Count ? precips[i] : 0.0,
+                        RelativeHumidity = i < humidities.Count ? Math.Clamp(humidities[i], 0, 100) : snapshot.RelativeHumidity,
                         WindSpeedKmh = hrWind,
                         WindGustsKmh = i < gusts.Count ? gusts[i] : hrWind,
                         WindDirectionDeg = i < windDirs.Count ? windDirs[i] : snapshot.WindDirectionDeg,

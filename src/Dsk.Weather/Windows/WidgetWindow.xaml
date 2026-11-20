@@ -458,6 +458,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <ScrollViewer Grid.Row="0"
@@ -476,7 +477,9 @@
                                 <Grid Background="Transparent">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="34" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
                                     <ItemsControl Grid.Row="0" x:Name="CardHourlyItems">
@@ -540,6 +543,15 @@
                                                                        VerticalAlignment="Center"
                                                                        Visibility="{Binding SolarIconVisibility}" />
                                                         </Grid>
+                                                        <TextBlock Text="{Binding CompactTempLabel}"
+                                                                   Visibility="{Binding CompactTempVisibility}"
+                                                                   Foreground="{Binding CompactTempBrush}"
+                                                                   FontFamily="Segoe UI Variable Display, Segoe UI"
+                                                                   FontSize="11.5"
+                                                                   FontWeight="SemiBold"
+                                                                   Typography.NumeralAlignment="Tabular"
+                                                                   HorizontalAlignment="Center"
+                                                                   Margin="0,2,0,0" />
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>
@@ -551,11 +563,47 @@
                                             Height="34"
                                             Margin="0,1,0,0"
                                             IsHitTestVisible="False" />
+
+                                    <Canvas Grid.Row="2"
+                                            x:Name="HourlyPrecipCanvas"
+                                            Height="30"
+                                            Margin="0,2,0,0"
+                                            IsHitTestVisible="False"
+                                            Visibility="Collapsed" />
+
+                                    <Canvas Grid.Row="3"
+                                            x:Name="HourlyHumidityCanvas"
+                                            Height="30"
+                                            Margin="0,2,0,0"
+                                            IsHitTestVisible="False"
+                                            Visibility="Collapsed" />
                                 </Grid>
                             </ScrollViewer>
 
+                            <!-- Legenda curve attive (visibile quando è attiva precipitazioni o umidità) -->
+                            <StackPanel Grid.Row="1"
+                                        x:Name="HourlyCurvesLegend"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Margin="0,3,0,0"
+                                        Visibility="Collapsed"
+                                        IsHitTestVisible="False">
+                                <StackPanel x:Name="LegendTempItem" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
+                                    <Ellipse x:Name="LegendTempDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                    <TextBlock x:Name="LegendTempText" Text="Temp" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="9.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel x:Name="LegendPrecipItem" Orientation="Horizontal" Margin="0,0,10,0" VerticalAlignment="Center">
+                                    <Ellipse x:Name="LegendPrecipDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                    <TextBlock x:Name="LegendPrecipText" Text="Pioggia" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="9.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel x:Name="LegendHumidityItem" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse x:Name="LegendHumidityDot" Width="6" Height="6" VerticalAlignment="Center" Margin="0,0,4,0" />
+                                    <TextBlock x:Name="LegendHumidityText" Text="Umidità" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="9.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+
                             <!-- Indicatore scorrimento discreto (visibile solo al passaggio del mouse o durante lo scroll) -->
-                            <Grid Grid.Row="1"
+                            <Grid Grid.Row="2"
                                   x:Name="HourlyScrollIndicator"
                                   Height="2"
                                   Margin="18,4,18,0"

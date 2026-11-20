@@ -848,10 +848,27 @@
                                           Checked="SettingCheck_Changed"
                                           Unchecked="SettingCheck_Changed" />
                                 <CheckBox x:Name="ShowHourlyCheck"
-                                          Content="Mostra striscia 24 ore con curva termica"
+                                          Content="Mostra striscia 24 ore"
                                           Style="{StaticResource MaterialSwitchStyle}"
                                           Checked="SettingCheck_Changed"
                                           Unchecked="SettingCheck_Changed" />
+                                <StackPanel x:Name="HourlyCurvesPanel" Margin="18,0,0,4">
+                                    <CheckBox x:Name="ShowHourlyTempCurveCheck"
+                                              Content="Curva termica (°)"
+                                              Style="{StaticResource MaterialSwitchStyle}"
+                                              Checked="SettingCheck_Changed"
+                                              Unchecked="SettingCheck_Changed" />
+                                    <CheckBox x:Name="ShowHourlyPrecipCurveCheck"
+                                              Content="Curva precipitazioni (%)"
+                                              Style="{StaticResource MaterialSwitchStyle}"
+                                              Checked="SettingCheck_Changed"
+                                              Unchecked="SettingCheck_Changed" />
+                                    <CheckBox x:Name="ShowHourlyHumidityCurveCheck"
+                                              Content="Curva umidità (%)"
+                                              Style="{StaticResource MaterialSwitchStyle}"
+                                              Checked="SettingCheck_Changed"
+                                              Unchecked="SettingCheck_Changed" />
+                                </StackPanel>
                                 <CheckBox x:Name="EnableWeatherAlertsCheck"
                                           Content="Mostra allerte meteo (bordo giallo/rosso)"
                                           Style="{StaticResource MaterialSwitchStyle}"

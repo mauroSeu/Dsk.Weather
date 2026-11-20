@@ -48,7 +48,8 @@ namespace Dsk.Weather.Tests
                 ("FallbackPersistenceAndNowcastThresholds", TestFallbackPersistenceAndNowcastThresholds),
                 ("DpcItalyOfficialAlertsByMunicipality", TestDpcItalyOfficialAlertsByMunicipality),
                 ("IpmaPortugalOfficialAlertsParsing", TestIpmaPortugalOfficialAlertsParsing),
-                ("MetNorwayOfficialAlertsParsing", TestMetNorwayOfficialAlertsParsing)
+                ("MetNorwayOfficialAlertsParsing", TestMetNorwayOfficialAlertsParsing),
+                ("HourlyStripSeparateCurvesAndHumidity", TestHourlyStripSeparateCurvesAndHumidity)
             };
 
             int failures = 0;
@@ -1792,6 +1793,146 @@ namespace Dsk.Weather.Tests
             AssertEqual("ALLERTA VENTO", noAlert.Title, "MET Norway titolo vento IT");
             AssertEqual("MET Norway", noAlert.SourceName, "Fonte MET Norway");
             AssertEqual("Observed", noAlert.Certainty, "Certainty Observed preservata");
+        }
+
+        private static void TestHourlyStripSeparateCurvesAndHumidity()
+        {
+            string url = WeatherService.BuildForecastUrl(39.4234, 8.9224);
+            AssertTrue(url.Contains("relative_humidity_2m", StringComparison.Ordinal), "URL Open-Meteo deve richiedere relative_humidity_2m");
+            int hourlyIdx = url.IndexOf("hourly=", StringComparison.Ordinal);
+            AssertTrue(hourlyIdx > 0 && url.Substring(hourlyIdx).Contains("relative_humidity_2m", StringComparison.Ordinal), "Parametro hourly deve includere relative_humidity_2m");
+
+            var baseNow = new DateTime(2026, 11, 20, 12, 0, 0);
+            const string json = """
+            {
+              "current": { "temperature_2m": 15.0, "apparent_temperature": 14.0, "weather_code": 2, "is_day": 1, "wind_speed_10m": 12.0, "wind_gusts_10m": 20.0, "relative_humidity_2m": 68, "uv_index": 2.0 },
+              "hourly": {
+                "time": ["2026-11-20T13:00", "2026-11-20T14:00"],
+                "temperature_2m": [16.0, 18.0],
+                "weather_code": [2, 3],
+                "precipitation_probability": [20, 60],
+                "relative_humidity_2m": [60, 80],
+                "wind_speed_10m": [12.0, 14.0],
+                "is_day": [1, 1]
+              },
+              "daily": { "time": ["2026-11-20"], "weather_code": [2], "temperature_2m_max": [18.0], "temperature_2m_min": [10.0], "precipitation_probability_max": [60], "wind_speed_10m_max": [14.0] }
+            }
+            """;
+            WeatherSnapshot parsed = WeatherService.ParseForecastJson(json, "Serramanna", baseNow);
+            AssertEqual(60, parsed.NextHours[0].RelativeHumidity, "RelativeHumidity ora 1");
+            AssertEqual(80, parsed.NextHours[1].RelativeHumidity, "RelativeHumidity ora 2");
+
+            var solarSnap = new WeatherSnapshot
+            {
+                SunsetLocal = new DateTime(2026, 11, 20, 13, 30, 0),
+                NextHours = new List<HourlyForecastPoint>
+                {
+                    new() { LocalTime = new DateTime(2026, 11, 20, 13, 0, 0), TemperatureC = 16.0, PrecipProbability = 20, RelativeHumidity = 60 },
+                    new() { LocalTime = new DateTime(2026, 11, 20, 14, 0, 0), TemperatureC = 18.0, PrecipProbability = 60, RelativeHumidity = 80 }
+                }
+            };
+            List<Dsk.Weather.Windows.WidgetWindow.HourlyStripSlot> slots =
+                Dsk.Weather.Windows.WidgetWindow.BuildHourlyStripSlots(solarSnap);
+            AssertEqual(3, slots.Count, "2 ore + 1 tramonto");
+            AssertEqual(Dsk.Weather.Windows.WidgetWindow.HourlySlotKind.Sunset, slots[1].Kind, "Slot centrale è Tramonto");
+            AssertEqual(40, slots[1].PrecipProbability, "Precipitazioni interpolate al tramonto (40%)");
+            AssertEqual(70, slots[1].RelativeHumidity, "Umidità interpolata al tramonto (70%)");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "DskWeatherTests_Curves_" + Guid.NewGuid().ToString("N"));
+            Dsk.Weather.Windows.WidgetWindow? window = null;
+            try
+            {
+                var settingsService = new SettingsService(tempDir);
+                var cfg = new WidgetSettings
+                {
+                    ShowHourlyStrip = true,
+                    ShowHourlyTempCurve = false,
+                    ShowHourlyPrecipCurve = true,
+                    ShowHourlyHumidityCurve = true,
+                    PinMode = WindowPinMode.BottomMost,
+                    LayoutStyle = WidgetLayoutStyle.PixelCard
+                };
+                cfg.AddOrSelectLocation("Serramanna", "Italia", 39.42335, 8.92243);
+                settingsService.Save(cfg);
+                WidgetSettings reloaded = settingsService.Load();
+                AssertEqual(false, reloaded.ShowHourlyTempCurve, "Persistenza ShowHourlyTempCurve = false");
+                AssertEqual(true, reloaded.ShowHourlyPrecipCurve, "Persistenza ShowHourlyPrecipCurve = true");
+                AssertEqual(true, reloaded.ShowHourlyHumidityCurve, "Persistenza ShowHourlyHumidityCurve = true");
+
+                reloaded.ResetStyleToDefaults();
+                AssertEqual(false, reloaded.ShowHourlyTempCurve, "ResetStyleToDefaults non deve alterare ShowHourlyTempCurve");
+                AssertEqual(true, reloaded.ShowHourlyPrecipCurve, "ResetStyleToDefaults non deve alterare ShowHourlyPrecipCurve");
+                AssertEqual(true, reloaded.ShowHourlyHumidityCurve, "ResetStyleToDefaults non deve alterare ShowHourlyHumidityCurve");
+
+                if (System.Windows.Application.Current is null)
+                {
+                    var app = new Dsk.Weather.App();
+                    app.InitializeComponent();
+                }
+
+                window = new Dsk.Weather.Windows.WidgetWindow(
+                    cfg,
+                    settingsService,
+                    new WeatherService(),
+                    new MaterialColorService(),
+                    new DesktopPinService(),
+                    new AutostartService(),
+                    () => { },
+                    () => { });
+
+                // 1. Solo curva termica attiva
+                WidgetSettings onlyTemp = cfg.Clone();
+                onlyTemp.ShowHourlyTempCurve = true;
+                onlyTemp.ShowHourlyPrecipCurve = false;
+                onlyTemp.ShowHourlyHumidityCurve = false;
+                window.ApplySettings(onlyTemp, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlySparklineCanvas.Visibility, "Curva termica visibile");
+                AssertEqual(System.Windows.Visibility.Collapsed, window.HourlyPrecipCanvas.Visibility, "Curva precipitazioni nascosta");
+                AssertEqual(System.Windows.Visibility.Collapsed, window.HourlyHumidityCanvas.Visibility, "Curva umidità nascosta");
+                AssertEqual(System.Windows.Visibility.Collapsed, window.HourlyCurvesLegend.Visibility, "Legenda nascosta con sola curva termica");
+
+                // 2. Termica spenta + Precipitazioni & Umidità accese
+                WidgetSettings precipAndHum = cfg.Clone();
+                precipAndHum.ShowHourlyTempCurve = false;
+                precipAndHum.ShowHourlyPrecipCurve = true;
+                precipAndHum.ShowHourlyHumidityCurve = true;
+                window.ApplySettings(precipAndHum, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Collapsed, window.HourlySparklineCanvas.Visibility, "Curva termica nascosta");
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlyPrecipCanvas.Visibility, "Curva precipitazioni visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlyHumidityCanvas.Visibility, "Curva umidità visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlyCurvesLegend.Visibility, "Legenda visibile con precipitazioni/umidità");
+                AssertEqual(System.Windows.Visibility.Collapsed, window.LegendTempItem.Visibility, "Voce legenda Temp nascosta");
+                AssertEqual(System.Windows.Visibility.Visible, window.LegendPrecipItem.Visibility, "Voce legenda Pioggia visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.LegendHumidityItem.Visibility, "Voce legenda Umidità visibile");
+
+                // 3. Tutte e 3 attive
+                WidgetSettings allThree = cfg.Clone();
+                allThree.ShowHourlyTempCurve = true;
+                allThree.ShowHourlyPrecipCurve = true;
+                allThree.ShowHourlyHumidityCurve = true;
+                window.ApplySettings(allThree, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlySparklineCanvas.Visibility, "Tutte e 3: Termica visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlyPrecipCanvas.Visibility, "Tutte e 3: Precipitazioni visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlyHumidityCanvas.Visibility, "Tutte e 3: Umidità visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.HourlyCurvesLegend.Visibility, "Tutte e 3: Legenda visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.LegendTempItem.Visibility, "Tutte e 3: Voce Temp visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.LegendPrecipItem.Visibility, "Tutte e 3: Voce Pioggia visibile");
+                AssertEqual(System.Windows.Visibility.Visible, window.LegendHumidityItem.Visibility, "Tutte e 3: Voce Umidità visibile");
+
+                // 4. Striscia 24h disattivata indipendentemente dalle curve
+                WidgetSettings stripOff = allThree.Clone();
+                stripOff.ShowHourlyStrip = false;
+                window.ApplySettings(stripOff, refreshWeather: false);
+                AssertEqual(System.Windows.Visibility.Collapsed, window.CardHourlyContainer.Visibility, "CardHourlyContainer nascosta se ShowHourlyStrip = false");
+            }
+            finally
+            {
+                window?.Close();
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

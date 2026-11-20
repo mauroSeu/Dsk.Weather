@@ -102,6 +102,10 @@ namespace Dsk.Weather.Windows
                 Use24HourCheck.IsChecked = _draft.Use24HourFormat;
                 ShowSecondsCheck.IsChecked = _draft.ShowSeconds;
                 ShowHourlyCheck.IsChecked = _draft.ShowHourlyStrip;
+                ShowHourlyTempCurveCheck.IsChecked = _draft.ShowHourlyTempCurve;
+                ShowHourlyPrecipCurveCheck.IsChecked = _draft.ShowHourlyPrecipCurve;
+                ShowHourlyHumidityCurveCheck.IsChecked = _draft.ShowHourlyHumidityCurve;
+                SyncHourlyCurvesEnabledState();
                 EnableWeatherAlertsCheck.IsChecked = _draft.EnableWeatherAlerts;
                 LockPositionCheck.IsChecked = _draft.LockPosition;
                 AutostartCheck.IsChecked = _autostartService.IsEnabled();
@@ -296,6 +300,17 @@ namespace Dsk.Weather.Windows
             _onSettingsChanged(_draft);
         }
 
+        private void SyncHourlyCurvesEnabledState()
+        {
+            if (HourlyCurvesPanel is null || _draft is null)
+            {
+                return;
+            }
+
+            HourlyCurvesPanel.IsEnabled = _draft.ShowHourlyStrip;
+            HourlyCurvesPanel.Opacity = _draft.ShowHourlyStrip ? 1.0 : 0.45;
+        }
+
         private void SettingCheck_Changed(object sender, RoutedEventArgs e)
         {
             if (_isInitializing || _draft is null)
@@ -308,9 +323,13 @@ namespace Dsk.Weather.Windows
             _draft.Use24HourFormat = Use24HourCheck.IsChecked == true;
             _draft.ShowSeconds = ShowSecondsCheck.IsChecked == true;
             _draft.ShowHourlyStrip = ShowHourlyCheck.IsChecked == true;
+            _draft.ShowHourlyTempCurve = ShowHourlyTempCurveCheck.IsChecked == true;
+            _draft.ShowHourlyPrecipCurve = ShowHourlyPrecipCurveCheck.IsChecked == true;
+            _draft.ShowHourlyHumidityCurve = ShowHourlyHumidityCurveCheck.IsChecked == true;
             _draft.EnableWeatherAlerts = EnableWeatherAlertsCheck.IsChecked == true;
             _draft.LockPosition = LockPositionCheck.IsChecked == true;
 
+            SyncHourlyCurvesEnabledState();
             SyncDefaultStyleSwitch();
             _onSettingsChanged(_draft);
         }
@@ -558,6 +577,9 @@ namespace Dsk.Weather.Windows
             Use24HourCheck.Content = LocalizationService.T(lang, "set_24h");
             ShowSecondsCheck.Content = LocalizationService.T(lang, "set_seconds");
             ShowHourlyCheck.Content = LocalizationService.T(lang, "set_hourly_strip");
+            ShowHourlyTempCurveCheck.Content = LocalizationService.T(lang, "set_hourly_temp_curve");
+            ShowHourlyPrecipCurveCheck.Content = LocalizationService.T(lang, "set_hourly_precip_curve");
+            ShowHourlyHumidityCurveCheck.Content = LocalizationService.T(lang, "set_hourly_humidity_curve");
             EnableWeatherAlertsCheck.Content = LocalizationService.T(lang, "set_weather_alerts");
             TempUnitLabel.Text = LocalizationService.T(lang, "set_temp_unit");
             CbiTempC.Content = LocalizationService.T(lang, "set_temp_c");

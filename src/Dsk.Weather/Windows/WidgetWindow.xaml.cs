@@ -538,6 +538,8 @@ namespace Dsk.Weather.Windows
                 CardHourlyContainer.Padding = new Thickness(0, 8, 0, 0);
             }
 
+            ApplyHourlyCurvesVisibility();
+
             // Stile MaterialCompact (pulito senza riquadro opaco invasivo)
             CompactClockText.Foreground = textBrush;
             CompactSecondsText.Foreground = mutedBrush;
@@ -827,13 +829,71 @@ namespace Dsk.Weather.Windows
             UpdateQuickCitySwitchHints();
         }
 
+        private void ApplyHourlyCurvesVisibility()
+        {
+            if (_settings is null ||
+                HourlySparklineCanvas is null ||
+                HourlyPrecipCanvas is null ||
+                HourlyHumidityCanvas is null ||
+                HourlyCurvesLegend is null)
+            {
+                return;
+            }
+
+            string lang = _settings.Language;
+            bool showTemp = _settings.ShowHourlyTempCurve;
+            bool showPrecip = _settings.ShowHourlyPrecipCurve;
+            bool showHumidity = _settings.ShowHourlyHumidityCurve;
+
+            HourlySparklineCanvas.Visibility = showTemp ? Visibility.Visible : Visibility.Collapsed;
+            HourlyPrecipCanvas.Visibility = showPrecip ? Visibility.Visible : Visibility.Collapsed;
+            HourlyHumidityCanvas.Visibility = showHumidity ? Visibility.Visible : Visibility.Collapsed;
+
+            bool showLegend = showPrecip || showHumidity;
+            HourlyCurvesLegend.Visibility = showLegend ? Visibility.Visible : Visibility.Collapsed;
+            if (!showLegend)
+            {
+                return;
+            }
+
+            bool isMinimal = _settings.LayoutStyle == WidgetLayoutStyle.PixelMinimalTransparent;
+            bool isLightTheme = !isMinimal && _settings.ThemeMode == WidgetThemeMode.MaterialLight;
+            Color tempColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.Primary;
+            Color precipColor = isLightTheme ? Color.FromRgb(0x02, 0x84, 0xC7) : Color.FromRgb(0x38, 0xBD, 0xF8);
+            Color humidityColor = isLightTheme ? Color.FromRgb(0x0F, 0x76, 0x6E) : Color.FromRgb(0x2D, 0xD4, 0xBF);
+            SolidColorBrush legendTextBrush = MaterialThemePalette.ToBrush(
+                isMinimal ? Color.FromRgb(0xE2, 0xE8, 0xF0) : _currentPalette.OnSurfaceMuted);
+
+            LegendTempItem.Visibility = showTemp ? Visibility.Visible : Visibility.Collapsed;
+            LegendPrecipItem.Visibility = showPrecip ? Visibility.Visible : Visibility.Collapsed;
+            LegendHumidityItem.Visibility = showHumidity ? Visibility.Visible : Visibility.Collapsed;
+
+            LegendTempDot.Fill = MaterialThemePalette.ToBrush(tempColor);
+            LegendPrecipDot.Fill = MaterialThemePalette.ToBrush(precipColor);
+            LegendHumidityDot.Fill = MaterialThemePalette.ToBrush(humidityColor);
+
+            LegendTempText.Foreground = legendTextBrush;
+            LegendPrecipText.Foreground = legendTextBrush;
+            LegendHumidityText.Foreground = legendTextBrush;
+
+            LegendTempText.Text = LocalizationService.T(lang, "curve_legend_temp");
+            LegendPrecipText.Text = LocalizationService.T(lang, "curve_legend_precip");
+            LegendHumidityText.Text = LocalizationService.T(lang, "curve_legend_humidity");
+        }
+
         private void RebuildHourlyVisuals(bool resetScroll)
         {
+            ApplyHourlyCurvesVisibility();
+
             if (_currentWeather is null)
             {
                 CardHourlyItems.ItemsSource = null;
                 HourlySparklineCanvas.Children.Clear();
                 HourlySparklineCanvas.Width = 0;
+                HourlyPrecipCanvas.Children.Clear();
+                HourlyPrecipCanvas.Width = 0;
+                HourlyHumidityCanvas.Children.Clear();
+                HourlyHumidityCanvas.Width = 0;
                 return;
             }
 
@@ -850,10 +910,12 @@ namespace Dsk.Weather.Windows
             Color sparkPrimaryColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.Primary;
             Color sparkTextColor = isMinimal ? Color.FromRgb(0xF8, 0xFA, 0xFC) : _currentPalette.OnSurface;
             Color sparkDotStrokeColor = isMinimal ? Color.FromRgb(0x0F, 0x17, 0x2A) : _currentPalette.Surface;
+            SolidColorBrush compactTempBrush = MaterialThemePalette.ToBrush(sparkTextColor);
             bool isLightTheme = !isMinimal && _settings.ThemeMode == WidgetThemeMode.MaterialLight;
             SolidColorBrush solarBrush = MaterialThemePalette.ToBrush(
                 isLightTheme ? Color.FromRgb(0xD9, 0x77, 0x06) : Color.FromRgb(0xFB, 0xBF, 0x24));
 
+            Visibility compactTempVis = _settings.ShowHourlyTempCurve ? Visibility.Collapsed : Visibility.Visible;
             List<HourlyStripSlot> slots = BuildHourlyStripSlots(_currentWeather);
             var hourlyVms = new List<HourlyItemViewModel>(slots.Count);
             foreach (HourlyStripSlot slot in slots)
@@ -880,6 +942,9 @@ namespace Dsk.Weather.Windows
                         SolarArrowData = isSunset
                             ? "M 10,3 L 10,8.5 M 7.5,6 L 10,8.5 L 12.5,6"
                             : "M 10,8.5 L 10,3 M 7.5,5.5 L 10,3 L 12.5,5.5",
+                        CompactTempLabel = WeatherService.FormatTemp(slot.TemperatureC, _settings.TempUnit),
+                        CompactTempVisibility = compactTempVis,
+                        CompactTempBrush = compactTempBrush,
                         TooltipText = $"{dateLabel}{hhmm} · {fullLabel}"
                     });
                     continue;
@@ -887,7 +952,7 @@ namespace Dsk.Weather.Windows
 
                 HourlyForecastPoint hp = slot.Forecast!;
                 bool isMidnight = hp.LocalTime.Hour == 0;
-                bool showHourlyPrecip = hp.PrecipProbability >= 20;
+                bool showInlinePrecip = !_settings.ShowHourlyPrecipCurve && hp.PrecipProbability >= 20;
                 string condText = WeatherService.DescribeWmoCodeItalian(hp.WeatherCode, lang);
                 string hrCardinal = WeatherService.DescribeWindDirectionCardinal(hp.WindDirectionDeg, lang);
                 string windRounded = Math.Round(hp.WindSpeedKmh).ToString("0", CultureInfo.InvariantCulture);
@@ -895,11 +960,14 @@ namespace Dsk.Weather.Windows
                 hourlyVms.Add(new HourlyItemViewModel
                 {
                     HourLabel = hhmm,
-                    PrecipLabel = showHourlyPrecip ? $"{hp.PrecipProbability}%" : string.Empty,
-                    PrecipVisibility = showHourlyPrecip ? Visibility.Visible : Visibility.Hidden,
+                    PrecipLabel = showInlinePrecip ? $"{hp.PrecipProbability}%" : string.Empty,
+                    PrecipVisibility = showInlinePrecip ? Visibility.Visible : Visibility.Hidden,
                     WeatherIconVisibility = Visibility.Visible,
                     SolarIconVisibility = Visibility.Collapsed,
-                    TooltipText = LocalizationService.Format(lang, "hourly_tooltip", dateLabel, hhmm, condText, hp.PrecipProbability, windRounded, hrCardinal),
+                    CompactTempLabel = WeatherService.FormatTemp(hp.TemperatureC, _settings.TempUnit),
+                    CompactTempVisibility = compactTempVis,
+                    CompactTempBrush = compactTempBrush,
+                    TooltipText = LocalizationService.Format(lang, "hourly_tooltip", dateLabel, hhmm, condText, hp.PrecipProbability, windRounded, hrCardinal, hp.RelativeHumidity),
                     WeatherCode = hp.WeatherCode,
                     IsDay = hp.IsDay,
                     HourBrush = isMidnight ? hourAccentBrush : hourMutedBrush,
@@ -908,7 +976,7 @@ namespace Dsk.Weather.Windows
             }
 
             CardHourlyItems.ItemsSource = hourlyVms;
-            RenderHourlySparkline(slots, _settings.TempUnit, sparkPrimaryColor, sparkTextColor, sparkDotStrokeColor);
+            RenderHourlySparkline(slots, _settings.TempUnit, sparkPrimaryColor, sparkTextColor, sparkDotStrokeColor, isLightTheme);
 
             if (resetScroll)
             {
@@ -968,40 +1036,60 @@ namespace Dsk.Weather.Windows
                 while (solarIdx < solarEvents.Count && solarEvents[solarIdx].Time <= current.LocalTime)
                 {
                     (DateTime sTime, HourlySlotKind sKind) = solarEvents[solarIdx++];
-                    double interpTemp = InterpolateTempAt(hours, i, sTime);
-                    result.Add(new HourlyStripSlot(sKind, sTime, interpTemp, null));
+                    double interpTemp = InterpolateValueAt(hours, i, sTime, hp => hp.TemperatureC);
+                    int interpPrecip = (int)Math.Round(InterpolateValueAt(hours, i, sTime, hp => hp.PrecipProbability));
+                    int interpHum = (int)Math.Round(InterpolateValueAt(hours, i, sTime, hp => hp.RelativeHumidity));
+                    result.Add(new HourlyStripSlot(sKind, sTime, interpTemp, null, interpPrecip, interpHum));
                 }
 
-                result.Add(new HourlyStripSlot(HourlySlotKind.Forecast, current.LocalTime, current.TemperatureC, current));
+                result.Add(new HourlyStripSlot(
+                    HourlySlotKind.Forecast,
+                    current.LocalTime,
+                    current.TemperatureC,
+                    current,
+                    current.PrecipProbability,
+                    current.RelativeHumidity));
             }
 
+            HourlyForecastPoint tail = hours[hours.Count - 1];
             while (solarIdx < solarEvents.Count)
             {
                 (DateTime sTime, HourlySlotKind sKind) = solarEvents[solarIdx++];
-                double tailTemp = hours[hours.Count - 1].TemperatureC;
-                result.Add(new HourlyStripSlot(sKind, sTime, tailTemp, null));
+                result.Add(new HourlyStripSlot(
+                    sKind,
+                    sTime,
+                    tail.TemperatureC,
+                    null,
+                    tail.PrecipProbability,
+                    tail.RelativeHumidity));
             }
 
             return result;
         }
 
-        private static double InterpolateTempAt(List<HourlyForecastPoint> hours, int nextIndex, DateTime targetTime)
+        private static double InterpolateValueAt(
+            List<HourlyForecastPoint> hours,
+            int nextIndex,
+            DateTime targetTime,
+            Func<HourlyForecastPoint, double> selector)
         {
             if (nextIndex <= 0)
             {
-                return hours[0].TemperatureC;
+                return selector(hours[0]);
             }
 
             HourlyForecastPoint prev = hours[nextIndex - 1];
             HourlyForecastPoint next = hours[nextIndex];
             double totalMins = (next.LocalTime - prev.LocalTime).TotalMinutes;
+            double v0 = selector(prev);
+            double v1 = selector(next);
             if (totalMins <= 0.1)
             {
-                return next.TemperatureC;
+                return v1;
             }
 
             double ratio = Math.Clamp((targetTime - prev.LocalTime).TotalMinutes / totalMins, 0.0, 1.0);
-            return prev.TemperatureC + ((next.TemperatureC - prev.TemperatureC) * ratio);
+            return v0 + ((v1 - v0) * ratio);
         }
 
         private void RenderHourlySparkline(
@@ -1009,38 +1097,142 @@ namespace Dsk.Weather.Windows
             TemperatureUnit unit,
             Color primaryColor,
             Color textColor,
-            Color surfaceColor)
+            Color surfaceColor,
+            bool isLightTheme)
         {
-            HourlySparklineCanvas.Children.Clear();
-            if (slots is null || slots.Count == 0)
+            Color solarDotColor = Color.FromRgb(0xFB, 0xBF, 0x24);
+
+            if (_settings.ShowHourlyTempCurve && slots is not null && slots.Count > 0)
             {
+                double minT = double.MaxValue;
+                double maxT = double.MinValue;
+                foreach (HourlyStripSlot slot in slots)
+                {
+                    if (slot.TemperatureC < minT) minT = slot.TemperatureC;
+                    if (slot.TemperatureC > maxT) maxT = slot.TemperatureC;
+                }
+
+                RenderBezierMetricCanvas(
+                    HourlySparklineCanvas,
+                    34.0,
+                    slots.Count,
+                    i => slots[i].TemperatureC,
+                    i => WeatherService.FormatTemp(slots[i].TemperatureC, unit),
+                    i => slots[i].Kind != HourlySlotKind.Forecast,
+                    minT,
+                    maxT,
+                    primaryColor,
+                    textColor,
+                    surfaceColor,
+                    solarDotColor);
+            }
+            else
+            {
+                HourlySparklineCanvas.Children.Clear();
                 HourlySparklineCanvas.Width = 0;
+            }
+
+            if (_settings.ShowHourlyPrecipCurve && slots is not null && slots.Count > 0)
+            {
+                Color precipLine = isLightTheme ? Color.FromRgb(0x02, 0x84, 0xC7) : Color.FromRgb(0x38, 0xBD, 0xF8);
+                Color precipLabelColor = isLightTheme ? Color.FromRgb(0x03, 0x69, 0xA1) : Color.FromRgb(0xBA, 0xE6, 0xFD);
+                RenderBezierMetricCanvas(
+                    HourlyPrecipCanvas,
+                    30.0,
+                    slots.Count,
+                    i => slots[i].PrecipProbability,
+                    i => slots[i].Kind == HourlySlotKind.Forecast ? $"{slots[i].PrecipProbability}%" : string.Empty,
+                    _ => false,
+                    0.0,
+                    100.0,
+                    precipLine,
+                    precipLabelColor,
+                    surfaceColor,
+                    precipLine);
+            }
+            else
+            {
+                HourlyPrecipCanvas.Children.Clear();
+                HourlyPrecipCanvas.Width = 0;
+            }
+
+            if (_settings.ShowHourlyHumidityCurve && slots is not null && slots.Count > 0)
+            {
+                double rawMin = double.MaxValue;
+                double rawMax = double.MinValue;
+                foreach (HourlyStripSlot slot in slots)
+                {
+                    if (slot.RelativeHumidity < rawMin) rawMin = slot.RelativeHumidity;
+                    if (slot.RelativeHumidity > rawMax) rawMax = slot.RelativeHumidity;
+                }
+
+                double minH = Math.Max(0.0, rawMin - 5.0);
+                double maxH = Math.Min(100.0, Math.Max(rawMax + 5.0, minH + 20.0));
+                if (maxH - minH < 20.0)
+                {
+                    minH = Math.Max(0.0, maxH - 20.0);
+                }
+
+                Color humLine = isLightTheme ? Color.FromRgb(0x0F, 0x76, 0x6E) : Color.FromRgb(0x2D, 0xD4, 0xBF);
+                Color humLabelColor = isLightTheme ? Color.FromRgb(0x11, 0x5E, 0x59) : Color.FromRgb(0x99, 0xF6, 0xE4);
+                RenderBezierMetricCanvas(
+                    HourlyHumidityCanvas,
+                    30.0,
+                    slots.Count,
+                    i => slots[i].RelativeHumidity,
+                    i => slots[i].Kind == HourlySlotKind.Forecast ? $"{slots[i].RelativeHumidity}%" : string.Empty,
+                    _ => false,
+                    minH,
+                    maxH,
+                    humLine,
+                    humLabelColor,
+                    surfaceColor,
+                    humLine);
+            }
+            else
+            {
+                HourlyHumidityCanvas.Children.Clear();
+                HourlyHumidityCanvas.Width = 0;
+            }
+        }
+
+        private static void RenderBezierMetricCanvas(
+            Canvas targetCanvas,
+            double canvasHeight,
+            int count,
+            Func<int, double> valueSelector,
+            Func<int, string> labelSelector,
+            Func<int, bool> isHighlightDot,
+            double minVal,
+            double maxVal,
+            Color lineColor,
+            Color textColor,
+            Color dotStrokeColor,
+            Color highlightDotColor)
+        {
+            targetCanvas.Children.Clear();
+            if (count <= 0)
+            {
+                targetCanvas.Width = 0;
                 return;
             }
 
             const double colWidth = 60.0;
-            const double canvasHeight = 34.0;
-            const double topDotY = 16.5;
-            const double bottomDotY = 28.5;
+            bool isTempCanvas = canvasHeight >= 33.0;
+            double topDotY = isTempCanvas ? 16.5 : 15.0;
+            double bottomDotY = canvasHeight - 5.5;
+            double labelOffset = isTempCanvas ? 16.0 : 14.5;
+            double fontSize = isTempCanvas ? 11.5 : 10.0;
 
-            int count = slots.Count;
             double totalWidth = count * colWidth;
-            HourlySparklineCanvas.Width = totalWidth;
+            targetCanvas.Width = totalWidth;
 
-            double minT = double.MaxValue;
-            double maxT = double.MinValue;
-            foreach (HourlyStripSlot slot in slots)
-            {
-                if (slot.TemperatureC < minT) minT = slot.TemperatureC;
-                if (slot.TemperatureC > maxT) maxT = slot.TemperatureC;
-            }
-
-            double span = maxT - minT;
+            double span = maxVal - minVal;
             var points = new Point[count];
             for (int i = 0; i < count; i++)
             {
                 double cx = (i * colWidth) + (colWidth / 2.0);
-                double norm = span < 0.3 ? 0.5 : (slots[i].TemperatureC - minT) / span;
+                double norm = span < 0.3 ? 0.5 : Math.Clamp((valueSelector(i) - minVal) / span, 0.0, 1.0);
                 double cy = bottomDotY - (norm * (bottomDotY - topDotY));
                 points[i] = new Point(cx, cy);
             }
@@ -1069,13 +1261,13 @@ namespace Dsk.Weather.Windows
                 areaGeometry.Freeze();
 
                 var areaBrush = new LinearGradientBrush(
-                    Color.FromArgb(64, primaryColor.R, primaryColor.G, primaryColor.B),
-                    Color.FromArgb(0, primaryColor.R, primaryColor.G, primaryColor.B),
+                    Color.FromArgb(isTempCanvas ? (byte)64 : (byte)54, lineColor.R, lineColor.G, lineColor.B),
+                    Color.FromArgb(0, lineColor.R, lineColor.G, lineColor.B),
                     new Point(0.5, 0.0),
                     new Point(0.5, 1.0));
                 areaBrush.Freeze();
 
-                HourlySparklineCanvas.Children.Add(new System.Windows.Shapes.Path
+                targetCanvas.Children.Add(new System.Windows.Shapes.Path
                 {
                     Data = areaGeometry,
                     Fill = areaBrush
@@ -1084,53 +1276,57 @@ namespace Dsk.Weather.Windows
                 var lineGeometry = new PathGeometry(new[] { lineFigure });
                 lineGeometry.Freeze();
 
-                HourlySparklineCanvas.Children.Add(new System.Windows.Shapes.Path
+                targetCanvas.Children.Add(new System.Windows.Shapes.Path
                 {
                     Data = lineGeometry,
-                    Stroke = MaterialThemePalette.ToBrush(primaryColor, 0.92),
-                    StrokeThickness = 1.8,
+                    Stroke = MaterialThemePalette.ToBrush(lineColor, 0.92),
+                    StrokeThickness = isTempCanvas ? 1.8 : 1.6,
                     StrokeStartLineCap = PenLineCap.Round,
                     StrokeEndLineCap = PenLineCap.Round
                 });
             }
 
-            SolidColorBrush dotFill = MaterialThemePalette.ToBrush(primaryColor);
-            SolidColorBrush solarDotFill = MaterialThemePalette.ToBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
-            SolidColorBrush dotStroke = MaterialThemePalette.ToBrush(surfaceColor);
+            SolidColorBrush dotFill = MaterialThemePalette.ToBrush(lineColor);
+            SolidColorBrush highlightFill = MaterialThemePalette.ToBrush(highlightDotColor);
+            SolidColorBrush dotStroke = MaterialThemePalette.ToBrush(dotStrokeColor);
             SolidColorBrush labelBrush = MaterialThemePalette.ToBrush(textColor);
             var fontFamily = new FontFamily("Segoe UI Variable Display, Segoe UI");
 
             for (int i = 0; i < count; i++)
             {
                 Point pt = points[i];
-                bool isSolar = slots[i].Kind != HourlySlotKind.Forecast;
+                bool highlight = isHighlightDot(i);
+                string labelText = labelSelector(i);
 
-                var label = new TextBlock
+                if (!string.IsNullOrEmpty(labelText))
                 {
-                    Text = WeatherService.FormatTemp(slots[i].TemperatureC, unit),
-                    Width = colWidth,
-                    TextAlignment = TextAlignment.Center,
-                    FontFamily = fontFamily,
-                    FontSize = 11.5,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = labelBrush
-                };
-                Canvas.SetLeft(label, i * colWidth);
-                Canvas.SetTop(label, pt.Y - 16.0);
-                HourlySparklineCanvas.Children.Add(label);
+                    var label = new TextBlock
+                    {
+                        Text = labelText,
+                        Width = colWidth,
+                        TextAlignment = TextAlignment.Center,
+                        FontFamily = fontFamily,
+                        FontSize = fontSize,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = labelBrush
+                    };
+                    Canvas.SetLeft(label, i * colWidth);
+                    Canvas.SetTop(label, Math.Max(0.0, pt.Y - labelOffset));
+                    targetCanvas.Children.Add(label);
+                }
 
-                double dotSize = isSolar ? 6.2 : 5.2;
+                double dotSize = highlight ? 6.2 : (isTempCanvas ? 5.2 : 4.6);
                 var dot = new Ellipse
                 {
                     Width = dotSize,
                     Height = dotSize,
-                    Fill = isSolar ? solarDotFill : dotFill,
+                    Fill = highlight ? highlightFill : dotFill,
                     Stroke = dotStroke,
                     StrokeThickness = 1.2
                 };
                 Canvas.SetLeft(dot, pt.X - (dotSize / 2.0));
                 Canvas.SetTop(dot, pt.Y - (dotSize / 2.0));
-                HourlySparklineCanvas.Children.Add(dot);
+                targetCanvas.Children.Add(dot);
             }
         }
 
@@ -1887,7 +2083,9 @@ namespace Dsk.Weather.Windows
             HourlySlotKind Kind,
             DateTime LocalTime,
             double TemperatureC,
-            HourlyForecastPoint? Forecast);
+            HourlyForecastPoint? Forecast,
+            int PrecipProbability = 0,
+            int RelativeHumidity = 0);
 
         private sealed class HourlyItemViewModel
         {
@@ -1899,6 +2097,9 @@ namespace Dsk.Weather.Windows
             public string SolarLabel { get; init; } = string.Empty;
             public Brush SolarLabelBrush { get; init; } = Brushes.Gold;
             public string SolarArrowData { get; init; } = string.Empty;
+            public string CompactTempLabel { get; init; } = string.Empty;
+            public Visibility CompactTempVisibility { get; init; } = Visibility.Collapsed;
+            public Brush CompactTempBrush { get; init; } = Brushes.White;
             public string TooltipText { get; init; } = string.Empty;
             public int WeatherCode { get; init; }
             public bool IsDay { get; init; }

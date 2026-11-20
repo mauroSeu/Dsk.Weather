@@ -72,6 +72,7 @@ namespace Dsk.Weather.Models
         public int WeatherCode { get; set; }
         public int PrecipProbability { get; set; }
         public double PrecipitationMm { get; set; }
+        public int RelativeHumidity { get; set; }
         public double WindSpeedKmh { get; set; }
         public double WindGustsKmh { get; set; }
         public int WindDirectionDeg { get; set; }

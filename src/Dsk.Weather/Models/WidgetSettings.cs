@@ -78,6 +78,9 @@ namespace Dsk.Weather.Models
         public bool Use24HourFormat { get; set; } = true;
         public bool ShowSeconds { get; set; } = false;
         public bool ShowHourlyStrip { get; set; } = true;
+        public bool ShowHourlyTempCurve { get; set; } = true;
+        public bool ShowHourlyPrecipCurve { get; set; } = false;
+        public bool ShowHourlyHumidityCurve { get; set; } = false;
         public bool LockPosition { get; set; } = false;
         public TemperatureUnit TempUnit { get; set; } = TemperatureUnit.Celsius;
         public bool EnableDynamicAtmosphere { get; set; } = true;
@@ -279,6 +282,9 @@ namespace Dsk.Weather.Models
                 Use24HourFormat = Use24HourFormat,
                 ShowSeconds = ShowSeconds,
                 ShowHourlyStrip = ShowHourlyStrip,
+                ShowHourlyTempCurve = ShowHourlyTempCurve,
+                ShowHourlyPrecipCurve = ShowHourlyPrecipCurve,
+                ShowHourlyHumidityCurve = ShowHourlyHumidityCurve,
                 LockPosition = LockPosition,
                 TempUnit = TempUnit,
                 EnableDynamicAtmosphere = EnableDynamicAtmosphere,
