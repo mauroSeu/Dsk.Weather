@@ -1,4 +1,4 @@
-# Pixel Desktop Widget (Windows 11)
+# Dsk.Weather — Pixel Desktop Widget (Windows 11)
 
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square&logo=dotnet)
 ![Platform](https://img.shields.io/badge/Windows-10%20%2F%2011%20WPF-0078D4?style=flat-square&logo=windows)

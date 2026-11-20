@@ -1,4 +1,4 @@
-# STATO PROGETTO — PixelDesktopWidget
+# STATO PROGETTO — Dsk.Weather (PixelDesktopWidget)
 
 - **Stato:** Chiuso come **v1.2 Final** (prodotto completo, verificato 16/16 test verdi, zero errori in runtime).
 - **Percorso:** `./` (`PixelDesktopWidget`)
