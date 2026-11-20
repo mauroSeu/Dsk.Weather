@@ -107,6 +107,7 @@ namespace Dsk.Weather.Windows
                 Use24HourCheck.IsChecked = _draft.Use24HourFormat;
                 ShowSecondsCheck.IsChecked = _draft.ShowSeconds;
                 ShowHourlyCheck.IsChecked = _draft.ShowHourlyStrip;
+                EnableWeatherAlertsCheck.IsChecked = _draft.EnableWeatherAlerts;
                 QuickNoteBox.Text = _draft.QuickNote;
                 LockPositionCheck.IsChecked = _draft.LockPosition;
                 AutostartCheck.IsChecked = _autostartService.IsEnabled();
@@ -271,6 +272,7 @@ namespace Dsk.Weather.Windows
             _draft.Use24HourFormat = Use24HourCheck.IsChecked == true;
             _draft.ShowSeconds = ShowSecondsCheck.IsChecked == true;
             _draft.ShowHourlyStrip = ShowHourlyCheck.IsChecked == true;
+            _draft.EnableWeatherAlerts = EnableWeatherAlertsCheck.IsChecked == true;
             _draft.LockPosition = LockPositionCheck.IsChecked == true;
 
             _onSettingsChanged(_draft);

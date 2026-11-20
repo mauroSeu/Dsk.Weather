@@ -17,6 +17,22 @@ namespace Dsk.Weather.Models
         Thunderstorm
     }
 
+    public enum WeatherAlertLevel
+    {
+        None,
+        Yellow,
+        Red
+    }
+
+    public sealed record WeatherAlertInfo(
+        WeatherAlertLevel Level,
+        string Title,
+        string Detail,
+        string Tooltip)
+    {
+        public static WeatherAlertInfo None { get; } = new WeatherAlertInfo(WeatherAlertLevel.None, string.Empty, string.Empty, string.Empty);
+    }
+
     public sealed class WeatherSnapshot
     {
         public DateTime FetchedAtUtc { get; set; }
@@ -26,6 +42,7 @@ namespace Dsk.Weather.Models
         public int WeatherCode { get; set; }
         public bool IsDay { get; set; } = true;
         public double WindSpeedKmh { get; set; }
+        public double WindGustsKmh { get; set; }
         public int WindDirectionDeg { get; set; }
         public int RelativeHumidity { get; set; }
         public double TodayMaxC { get; set; }
@@ -49,6 +66,7 @@ namespace Dsk.Weather.Models
         public int WeatherCode { get; set; }
         public int PrecipProbability { get; set; }
         public double WindSpeedKmh { get; set; }
+        public double WindGustsKmh { get; set; }
         public int WindDirectionDeg { get; set; }
         public bool IsDay { get; set; } = true;
     }
@@ -61,6 +79,7 @@ namespace Dsk.Weather.Models
         public double MinC { get; set; }
         public int PrecipProbabilityMax { get; set; }
         public double WindSpeedMaxKmh { get; set; }
+        public double WindGustsMaxKmh { get; set; }
         public int WindDirectionDeg { get; set; }
     }
 

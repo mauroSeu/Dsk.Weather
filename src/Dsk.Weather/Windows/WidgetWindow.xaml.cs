@@ -552,6 +552,7 @@ namespace Dsk.Weather.Windows
             bool sceneEnabled = _settings.EnableWeatherAnimations &&
                                 _settings.LayoutStyle != WidgetLayoutStyle.PixelMinimalTransparent;
             WeatherScene.Configure(sceneKind, sceneEnabled, _settings.ThemeMode == WidgetThemeMode.MaterialLight);
+            UpdateAlertBadge();
             UpdateQuickCitySwitchHints();
         }
 
@@ -791,6 +792,7 @@ namespace Dsk.Weather.Windows
             }
 
             DailyForecastItems.ItemsSource = dailyVms;
+            UpdateAlertBadge();
             UpdateQuickCitySwitchHints();
         }
 
@@ -1017,6 +1019,7 @@ namespace Dsk.Weather.Windows
             {
                 if (current is Button ||
                     ReferenceEquals(current, CardWeatherPill) ||
+                    ReferenceEquals(current, CardAlertBadge) ||
                     ReferenceEquals(current, MinimalWeatherPill) ||
                     ReferenceEquals(current, CompactWeatherPill) ||
                     ReferenceEquals(current, CardHourlyContainer) ||
@@ -1332,6 +1335,81 @@ namespace Dsk.Weather.Windows
         private void BtnSettings_Click(object sender, RoutedEventArgs e)
         {
             Dispatcher.BeginInvoke(DispatcherPriority.Background, _openSettingsAction);
+        }
+
+        private void CardAlertBadge_Click(object sender, MouseButtonEventArgs e)
+        {
+            e.Handled = true;
+            OpenDrawer(radarTab: true);
+        }
+
+        private void UpdateAlertBadge()
+        {
+            if (!_settings.EnableWeatherAlerts)
+            {
+                CardAlertBadge.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            WeatherAlertInfo alert;
+            if (_previewWeatherOverride.HasValue)
+            {
+                alert = _previewWeatherOverride.Value switch
+                {
+                    WeatherIconKind.Thunderstorm => new WeatherAlertInfo(
+                        WeatherAlertLevel.Red,
+                        "TEMPORALE",
+                        "Anteprima allerta",
+                        "Allerta Rossa (Anteprima)"),
+                    WeatherIconKind.Snow => new WeatherAlertInfo(
+                        WeatherAlertLevel.Yellow,
+                        "RISCHIO GELO",
+                        "Anteprima allerta",
+                        "Allerta Gialla (Anteprima)"),
+                    WeatherIconKind.Fog => new WeatherAlertInfo(
+                        WeatherAlertLevel.Yellow,
+                        "NEBBIA FITTA",
+                        "Anteprima allerta",
+                        "Allerta Gialla (Anteprima)"),
+                    _ => WeatherAlertInfo.None
+                };
+            }
+            else
+            {
+                alert = WeatherService.EvaluateWeatherAlert(_currentWeather, _settings.TempUnit, DateTime.Now);
+            }
+
+            if (alert.Level == WeatherAlertLevel.None)
+            {
+                CardAlertBadge.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            bool isLight = _settings.ThemeMode == WidgetThemeMode.MaterialLight;
+            bool isRed = alert.Level == WeatherAlertLevel.Red;
+
+            Color bgColor = isRed
+                ? (isLight ? Color.FromArgb(0x22, 0xDC, 0x26, 0x26) : Color.FromArgb(0x2E, 0xEF, 0x44, 0x44))
+                : (isLight ? Color.FromArgb(0x24, 0xD9, 0x77, 0x06) : Color.FromArgb(0x29, 0xF5, 0x9E, 0x0B));
+
+            Color borderColor = isRed
+                ? (isLight ? Color.FromRgb(0xDC, 0x26, 0x26) : Color.FromRgb(0xF8, 0x71, 0x71))
+                : (isLight ? Color.FromRgb(0xD9, 0x77, 0x06) : Color.FromRgb(0xFB, 0xBF, 0x24));
+
+            Color accentFg = isRed
+                ? (isLight ? Color.FromRgb(0xB9, 0x1C, 0x1C) : Color.FromRgb(0xFC, 0xA5, 0xA5))
+                : (isLight ? Color.FromRgb(0xB4, 0x53, 0x09) : Color.FromRgb(0xFD, 0xE6, 0x8A));
+
+            CardAlertBadge.Background = MaterialThemePalette.ToBrush(bgColor);
+            CardAlertBadge.BorderBrush = MaterialThemePalette.ToBrush(borderColor, 0.90);
+            CardAlertIcon.Foreground = MaterialThemePalette.ToBrush(accentFg);
+            CardAlertTitleText.Foreground = MaterialThemePalette.ToBrush(accentFg);
+            CardAlertDetailText.Foreground = MaterialThemePalette.ToBrush(_currentPalette.OnSurface);
+
+            CardAlertTitleText.Text = alert.Title;
+            CardAlertDetailText.Text = alert.Detail;
+            CardAlertBadge.ToolTip = alert.Tooltip;
+            CardAlertBadge.Visibility = Visibility.Visible;
         }
 
         private void UpdateQuickCitySwitchHints()

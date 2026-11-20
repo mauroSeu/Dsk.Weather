@@ -268,12 +268,294 @@ namespace Dsk.Weather.Services
             return (code >= 71 && code <= 77) || code is 85 or 86;
         }
 
+        private static bool IsFreezingRainCode(int code)
+        {
+            return code is 56 or 57 or 66 or 67;
+        }
+
+        public static WeatherAlertInfo EvaluateWeatherAlert(WeatherSnapshot? w, TemperatureUnit unit, DateTime localNow)
+        {
+            if (w is null)
+            {
+                return WeatherAlertInfo.None;
+            }
+
+            List<HourlyForecastPoint> horizon = w.Next12Hours is { Count: > 0 }
+                ? w.Next12Hours
+                : w.NextHours;
+
+            // --- ALLERTA ROSSA (Priorità massima) ---
+            if (w.WeatherCode >= 95)
+            {
+                string title = w.WeatherCode >= 96 ? "GRANDINE" : "TEMPORALE";
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    title,
+                    "In corso",
+                    $"Allerta Rossa · {title} in corso · Clicca per aprire il Radar Live");
+            }
+
+            HourlyForecastPoint? upcomingStorm = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode >= 95);
+            if (upcomingStorm is not null)
+            {
+                string title = upcomingStorm.WeatherCode >= 96 ? "GRANDINE" : "TEMPORALE";
+                string hhmm = upcomingStorm.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    title,
+                    $"Alle {hhmm}",
+                    $"Allerta Rossa · {title} previsto alle {hhmm} · Clicca per aprire il Radar Live");
+            }
+
+            if (IsFreezingRainCode(w.WeatherCode))
+            {
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "PIOGGIA GELATA",
+                    "In corso",
+                    "Allerta Rossa · Pioggia gelata in corso · Strade scivolose");
+            }
+
+            HourlyForecastPoint? freezingRain = FindFirstMatching(horizon, 12, localNow, hp => IsFreezingRainCode(hp.WeatherCode));
+            if (freezingRain is not null)
+            {
+                string hhmm = freezingRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "PIOGGIA GELATA",
+                    $"Alle {hhmm}",
+                    $"Allerta Rossa · Pioggia gelata prevista alle {hhmm} · Rischio ghiaccio");
+            }
+
+            double peakGust = w.WindGustsKmh;
+            DateTime? peakGustTime = null;
+            double peakWind = w.WindSpeedKmh;
+            DateTime? peakWindTime = null;
+            DateTime limit12 = localNow.AddHours(12);
+            foreach (HourlyForecastPoint hp in horizon)
+            {
+                if (hp.LocalTime > limit12)
+                {
+                    continue;
+                }
+
+                if (hp.WindGustsKmh > peakGust)
+                {
+                    peakGust = hp.WindGustsKmh;
+                    peakGustTime = hp.LocalTime;
+                }
+                if (hp.WindSpeedKmh > peakWind)
+                {
+                    peakWind = hp.WindSpeedKmh;
+                    peakWindTime = hp.LocalTime;
+                }
+            }
+
+            if (peakGust >= 75.0)
+            {
+                string gustStr = $"{Math.Round(peakGust).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string when = peakGustTime.HasValue ? $" alle {peakGustTime.Value:HH:mm}" : " in corso";
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "RAFFICHE FORTI",
+                    gustStr,
+                    $"Allerta Rossa · Raffiche fino a {gustStr}{when}");
+            }
+
+            if (w.WeatherCode is 65 or 82)
+            {
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "NUBIFRAGIO",
+                    "In corso",
+                    "Allerta Rossa · Pioggia violenta in corso · Clicca per aprire il Radar Live");
+            }
+
+            HourlyForecastPoint? cloudburst = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 65 or 82);
+            if (cloudburst is not null)
+            {
+                string hhmm = cloudburst.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "NUBIFRAGIO",
+                    $"Alle {hhmm}",
+                    $"Allerta Rossa · Pioggia intensa prevista alle {hhmm} · Clicca per aprire il Radar Live");
+            }
+
+            if (w.WeatherCode is 75 or 86)
+            {
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "NEVE INTENSA",
+                    "In corso",
+                    "Allerta Rossa · Nevicata intensa in corso");
+            }
+
+            HourlyForecastPoint? heavySnow = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 75 or 86);
+            if (heavySnow is not null)
+            {
+                string hhmm = heavySnow.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "NEVE INTENSA",
+                    $"Alle {hhmm}",
+                    $"Allerta Rossa · Neve intensa prevista alle {hhmm}");
+            }
+
+            if (w.TemperatureC >= 38.0 || w.ApparentTemperatureC >= 40.0)
+            {
+                string tempStr = FormatTemp(w.TemperatureC, unit);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Red,
+                    "CALDO ESTREMO",
+                    $"Attuale {tempStr}",
+                    $"Allerta Rossa · Temperatura estrema ({tempStr})");
+            }
+
+            // --- ALLERTA GIALLA (Attenzione) ---
+            if (peakGust >= 55.0)
+            {
+                string gustStr = $"{Math.Round(peakGust).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string when = peakGustTime.HasValue ? $" alle {peakGustTime.Value:HH:mm}" : " in corso";
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "ALLERTA VENTO",
+                    $"Raffiche {gustStr}",
+                    $"Allerta Gialla · Raffiche fino a {gustStr}{when}");
+            }
+
+            if (peakWind >= 42.0)
+            {
+                string windStr = $"{Math.Round(peakWind).ToString("0", CultureInfo.InvariantCulture)} km/h";
+                string when = peakWindTime.HasValue ? $" alle {peakWindTime.Value:HH:mm}" : " in corso";
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "ALLERTA VENTO",
+                    $"Vento {windStr}",
+                    $"Allerta Gialla · Vento sostenuto ({windStr}){when}");
+            }
+
+            if (w.TemperatureC <= 0.0)
+            {
+                string frostStr = FormatTemp(w.TemperatureC, unit);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "RISCHIO GELO",
+                    $"Attuale {frostStr}",
+                    $"Allerta Gialla · Temperature sotto zero ({frostStr}) · Rischio ghiaccio");
+            }
+
+            double minTemp12 = double.MaxValue;
+            DateTime? minTempTime = null;
+            foreach (HourlyForecastPoint hp in horizon)
+            {
+                if (hp.LocalTime <= limit12 && hp.TemperatureC < minTemp12)
+                {
+                    minTemp12 = hp.TemperatureC;
+                    minTempTime = hp.LocalTime;
+                }
+            }
+
+            if (minTemp12 <= 0.0 && minTempTime.HasValue)
+            {
+                string frostStr = FormatTemp(minTemp12, unit);
+                string hhmm = minTempTime.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "RISCHIO GELO",
+                    $"{frostStr} alle {hhmm}",
+                    $"Allerta Gialla · Rischio gelo fino a {frostStr} alle {hhmm}");
+            }
+
+            if (w.WeatherCode is 63 or 81)
+            {
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "PIOGGIA FORTE",
+                    "In corso",
+                    "Allerta Gialla · Pioggia moderata/forte in corso · Clicca per aprire il Radar Live");
+            }
+
+            HourlyForecastPoint? strongRain = FindFirstMatching(horizon, 12, localNow, hp => hp.WeatherCode is 63 or 81);
+            if (strongRain is not null)
+            {
+                string hhmm = strongRain.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "PIOGGIA FORTE",
+                    $"Alle {hhmm}",
+                    $"Allerta Gialla · Pioggia forte prevista alle {hhmm} · Clicca per aprire il Radar Live");
+            }
+
+            if (IsSnowCode(w.WeatherCode))
+            {
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "ALLERTA NEVE",
+                    "In corso",
+                    "Allerta Gialla · Precipitazioni nevose in corso");
+            }
+
+            HourlyForecastPoint? upcomingSnowAlert = FindFirstMatching(horizon, 12, localNow, hp => IsSnowCode(hp.WeatherCode));
+            if (upcomingSnowAlert is not null)
+            {
+                string hhmm = upcomingSnowAlert.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "ALLERTA NEVE",
+                    $"Alle {hhmm}",
+                    $"Allerta Gialla · Neve prevista alle {hhmm}");
+            }
+
+            if (w.WeatherCode is 45 or 48)
+            {
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "NEBBIA FITTA",
+                    "Visibilità ridotta",
+                    "Allerta Gialla · Nebbia presente, visibilità ridotta");
+            }
+
+            HourlyForecastPoint? fogAlert = FindFirstMatching(horizon, 8, localNow, hp => hp.WeatherCode is 45 or 48);
+            if (fogAlert is not null)
+            {
+                string hhmm = fogAlert.LocalTime.ToString("HH:mm", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "NEBBIA FITTA",
+                    $"Alle {hhmm}",
+                    $"Allerta Gialla · Formazione di nebbia prevista verso le {hhmm}");
+            }
+
+            if (w.IsDay && w.CurrentUvIndex >= 8.0)
+            {
+                string uvFormatted = w.CurrentUvIndex.ToString("0.#", CultureInfo.InvariantCulture);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "UV ELEVATO",
+                    $"Indice {uvFormatted}",
+                    $"Allerta Gialla · Indice UV {uvFormatted} ({DescribeUvLevelItalian(w.CurrentUvIndex)})");
+            }
+
+            if (w.TemperatureC >= 34.0 || w.ApparentTemperatureC >= 36.0)
+            {
+                string heatStr = FormatTemp(w.TemperatureC, unit);
+                return new WeatherAlertInfo(
+                    WeatherAlertLevel.Yellow,
+                    "CALDO INTENSO",
+                    $"Attuale {heatStr}",
+                    $"Allerta Gialla · Caldo intenso ({heatStr}) nelle ore centrali");
+            }
+
+            return WeatherAlertInfo.None;
+        }
+
         public static string BuildForecastUrl(double lat, double lon, WeatherModelPreference model = WeatherModelPreference.Auto)
         {
             string latStr = lat.ToString("0.####", CultureInfo.InvariantCulture);
             string lonStr = lon.ToString("0.####", CultureInfo.InvariantCulture);
             string modelParam = GetOpenMeteoModelParam(model);
-            return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max&timezone=auto&forecast_days=7&models={modelParam}";
+            return $"https://api.open-meteo.com/v1/forecast?latitude={latStr}&longitude={lonStr}&current=temperature_2m,apparent_temperature,weather_code,is_day,wind_speed_10m,wind_direction_10m,relative_humidity_2m,uv_index,wind_gusts_10m&hourly=temperature_2m,weather_code,precipitation_probability,wind_speed_10m,wind_direction_10m,is_day,wind_gusts_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant,sunrise,sunset,uv_index_max,wind_gusts_10m_max&timezone=auto&forecast_days=7&models={modelParam}";
         }
 
         public static string BuildGeocodingUrl(string query)
@@ -422,6 +704,7 @@ namespace Dsk.Weather.Services
                 snapshot.WeatherCode = TryGetInt(current, "weather_code", 0);
                 snapshot.IsDay = TryGetInt(current, "is_day", 1) == 1;
                 snapshot.WindSpeedKmh = TryGetDouble(current, "wind_speed_10m", 0.0);
+                snapshot.WindGustsKmh = TryGetDouble(current, "wind_gusts_10m", snapshot.WindSpeedKmh);
                 snapshot.WindDirectionDeg = TryGetInt(current, "wind_direction_10m", 0);
                 snapshot.RelativeHumidity = TryGetInt(current, "relative_humidity_2m", 0);
                 snapshot.CurrentUvIndex = TryGetDouble(current, "uv_index", 0.0);
@@ -434,6 +717,7 @@ namespace Dsk.Weather.Services
                 var codes = GetIntArray(hourly, "weather_code");
                 var probs = GetIntArray(hourly, "precipitation_probability");
                 var winds = GetDoubleArray(hourly, "wind_speed_10m");
+                var gusts = GetDoubleArray(hourly, "wind_gusts_10m");
                 var windDirs = GetIntArray(hourly, "wind_direction_10m");
                 var isDays = GetIntArray(hourly, "is_day");
 
@@ -466,13 +750,15 @@ namespace Dsk.Weather.Services
                         continue;
                     }
 
+                    double hrWind = i < winds.Count ? winds[i] : snapshot.WindSpeedKmh;
                     var point = new HourlyForecastPoint
                     {
                         LocalTime = parsedTime,
                         TemperatureC = i < temps.Count ? temps[i] : snapshot.TemperatureC,
                         WeatherCode = i < codes.Count ? codes[i] : snapshot.WeatherCode,
                         PrecipProbability = i < probs.Count ? probs[i] : 0,
-                        WindSpeedKmh = i < winds.Count ? winds[i] : snapshot.WindSpeedKmh,
+                        WindSpeedKmh = hrWind,
+                        WindGustsKmh = i < gusts.Count ? gusts[i] : hrWind,
                         WindDirectionDeg = i < windDirs.Count ? windDirs[i] : snapshot.WindDirectionDeg,
                         IsDay = i < isDays.Count ? isDays[i] == 1 : snapshot.IsDay
                     };
@@ -493,6 +779,7 @@ namespace Dsk.Weather.Services
                 var minTemps = GetDoubleArray(daily, "temperature_2m_min");
                 var probs = GetIntArray(daily, "precipitation_probability_max");
                 var maxWinds = GetDoubleArray(daily, "wind_speed_10m_max");
+                var maxGusts = GetDoubleArray(daily, "wind_gusts_10m_max");
                 var windDirs = GetIntArray(daily, "wind_direction_10m_dominant");
                 var sunrises = GetStringArray(daily, "sunrise");
                 var sunsets = GetStringArray(daily, "sunset");
@@ -514,6 +801,7 @@ namespace Dsk.Weather.Services
                         }
                     }
 
+                    double dayWind = i < maxWinds.Count ? maxWinds[i] : snapshot.WindSpeedKmh;
                     var dayPoint = new DailyForecastPoint
                     {
                         Date = parsedDate,
@@ -521,7 +809,8 @@ namespace Dsk.Weather.Services
                         MaxC = i < maxTemps.Count ? maxTemps[i] : snapshot.TemperatureC,
                         MinC = i < minTemps.Count ? minTemps[i] : snapshot.TemperatureC,
                         PrecipProbabilityMax = i < probs.Count ? probs[i] : 0,
-                        WindSpeedMaxKmh = i < maxWinds.Count ? maxWinds[i] : snapshot.WindSpeedKmh,
+                        WindSpeedMaxKmh = dayWind,
+                        WindGustsMaxKmh = i < maxGusts.Count ? maxGusts[i] : dayWind,
                         WindDirectionDeg = i < windDirs.Count ? windDirs[i] : snapshot.WindDirectionDeg
                     };
                     snapshot.Daily.Add(dayPoint);

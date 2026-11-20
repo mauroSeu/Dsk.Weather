@@ -83,6 +83,7 @@ namespace Dsk.Weather.Models
         public WeatherModelPreference WeatherModel { get; set; } = WeatherModelPreference.Auto;
         public bool EnableDynamicAtmosphere { get; set; } = true;
         public bool EnableWeatherAnimations { get; set; } = true;
+        public bool EnableWeatherAlerts { get; set; } = true;
         public string QuickNote { get; set; } = string.Empty;
         public int RadarZoom { get; set; } = 7;
         public string CityName { get; set; } = string.Empty;
@@ -269,6 +270,7 @@ namespace Dsk.Weather.Models
                 WeatherModel = WeatherModel,
                 EnableDynamicAtmosphere = EnableDynamicAtmosphere,
                 EnableWeatherAnimations = EnableWeatherAnimations,
+                EnableWeatherAlerts = EnableWeatherAlerts,
                 QuickNote = QuickNote,
                 RadarZoom = RadarZoom,
                 CityName = CityName,

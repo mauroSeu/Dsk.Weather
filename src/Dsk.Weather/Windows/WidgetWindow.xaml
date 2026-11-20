@@ -186,31 +186,75 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- Hero Clock -->
-                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,2,0,1">
-                            <TextBlock x:Name="CardClockText"
-                                       FontFamily="Segoe UI Variable Display, Segoe UI"
-                                       FontSize="56"
-                                       FontWeight="Light"
-                                       LineHeight="60"
-                                       LineStackingStrategy="BlockLineHeight"
-                                       Typography.NumeralAlignment="Tabular" />
-                            <TextBlock x:Name="CardSecondsText"
-                                       FontFamily="Segoe UI Variable Display, Segoe UI"
-                                       FontSize="20"
-                                       FontWeight="Light"
-                                       Typography.NumeralAlignment="Tabular"
-                                       VerticalAlignment="Bottom"
-                                       Margin="4,0,0,8"
-                                       Visibility="Collapsed" />
-                            <TextBlock x:Name="CardAmPmText"
-                                       FontFamily="Segoe UI Variable Text, Segoe UI"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Bottom"
-                                       Margin="6,0,0,9"
-                                       Visibility="Collapsed" />
-                        </StackPanel>
+                        <!-- Hero Clock + Badge Allerta Meteo (a destra dell'orologio) -->
+                        <Grid Grid.Row="1" Margin="0,2,0,1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <TextBlock x:Name="CardClockText"
+                                           FontFamily="Segoe UI Variable Display, Segoe UI"
+                                           FontSize="56"
+                                           FontWeight="Light"
+                                           LineHeight="60"
+                                           LineStackingStrategy="BlockLineHeight"
+                                           Typography.NumeralAlignment="Tabular" />
+                                <TextBlock x:Name="CardSecondsText"
+                                           FontFamily="Segoe UI Variable Display, Segoe UI"
+                                           FontSize="20"
+                                           FontWeight="Light"
+                                           Typography.NumeralAlignment="Tabular"
+                                           VerticalAlignment="Bottom"
+                                           Margin="4,0,0,8"
+                                           Visibility="Collapsed" />
+                                <TextBlock x:Name="CardAmPmText"
+                                           FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           VerticalAlignment="Bottom"
+                                           Margin="6,0,0,9"
+                                           Visibility="Collapsed" />
+                            </StackPanel>
+
+                            <Border x:Name="CardAlertBadge"
+                                    Grid.Column="1"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    MaxWidth="132"
+                                    CornerRadius="13"
+                                    BorderThickness="1"
+                                    Padding="9,5.5"
+                                    Margin="6,0,0,0"
+                                    Cursor="Hand"
+                                    MouseLeftButtonUp="CardAlertBadge_Click">
+                                <StackPanel Orientation="Vertical">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock x:Name="CardAlertIcon"
+                                                   Text="&#xE7BA;"
+                                                   FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
+                                                   FontSize="10.5"
+                                                   Margin="0,0,4,0"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock x:Name="CardAlertTitleText"
+                                                   FontFamily="Segoe UI Variable Display, Segoe UI"
+                                                   FontSize="9.5"
+                                                   FontWeight="Bold"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <TextBlock x:Name="CardAlertDetailText"
+                                               FontFamily="Segoe UI Variable Text, Segoe UI"
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Margin="0,1.5,0,0"
+                                               TextTrimming="CharacterEllipsis"
+                                               Typography.NumeralAlignment="Tabular" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
 
                         <!-- Avviso At a Glance / Nota Rapida -->
                         <TextBlock Grid.Row="2"

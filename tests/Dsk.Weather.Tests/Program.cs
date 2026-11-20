@@ -33,7 +33,8 @@ namespace Dsk.Weather.Tests
                 ("WeatherAnimationsSettingPersistence", TestWeatherAnimationsSetting),
                 ("WeatherAnimationsAllTenScenesStartCleanly", TestAllTenScenesAndIconsStartCleanly),
                 ("SettingsWindowAndContextMenuInstantiation", TestSettingsWindowAndContextMenuInstantiation),
-                ("FavoriteLocationCycleHelper", TestFavoriteLocationCycle)
+                ("FavoriteLocationCycleHelper", TestFavoriteLocationCycle),
+                ("WeatherAlertsEvaluationAndSeverity", TestWeatherAlertsEvaluationAndSeverity)
             };
 
             int failures = 0;
@@ -587,6 +588,120 @@ namespace Dsk.Weather.Tests
 
             SavedLocation? switched2 = settings.CycleNextFavorite();
             AssertTrue(switched2 is not null && switched2.Name == "Serramanna" && settings.CityName == "Serramanna", "Secondo ciclo deve tornare a Serramanna");
+        }
+
+        private static void TestWeatherAlertsEvaluationAndSeverity()
+        {
+            var baseNow = new DateTime(2026, 11, 20, 12, 0, 0);
+
+            // 1. Tempo neutro -> None
+            var mild = new WeatherSnapshot
+            {
+                TemperatureC = 18.0,
+                ApparentTemperatureC = 18.0,
+                WeatherCode = 1,
+                IsDay = true,
+                WindSpeedKmh = 10.0,
+                WindGustsKmh = 18.0,
+                CurrentUvIndex = 3.0
+            };
+            AssertEqual(WeatherAlertLevel.None, WeatherService.EvaluateWeatherAlert(mild, TemperatureUnit.Celsius, baseNow).Level, "Tempo mite deve restituire allerta None");
+
+            // 2. Gelo notturno entro 12h -> Yellow
+            var frostAhead = new WeatherSnapshot
+            {
+                TemperatureC = 5.0,
+                WeatherCode = 2,
+                IsDay = true,
+                Next12Hours = new List<HourlyForecastPoint>
+                {
+                    new HourlyForecastPoint { LocalTime = baseNow.AddHours(6), TemperatureC = -2.0, WeatherCode = 0 }
+                }
+            };
+            WeatherAlertInfo frostAlert = WeatherService.EvaluateWeatherAlert(frostAhead, TemperatureUnit.Celsius, baseNow);
+            AssertEqual(WeatherAlertLevel.Yellow, frostAlert.Level, "Gelo -2° deve attivare Allerta Gialla");
+            AssertEqual("RISCHIO GELO", frostAlert.Title, "Titolo allerta gelo");
+
+            // 3. Raffiche 62 km/h -> Yellow (ALLERTA VENTO)
+            var windy = new WeatherSnapshot
+            {
+                TemperatureC = 14.0,
+                WeatherCode = 3,
+                IsDay = true,
+                WindSpeedKmh = 35.0,
+                WindGustsKmh = 62.0
+            };
+            WeatherAlertInfo windAlert = WeatherService.EvaluateWeatherAlert(windy, TemperatureUnit.Celsius, baseNow);
+            AssertEqual(WeatherAlertLevel.Yellow, windAlert.Level, "Raffiche 62 km/h -> Allerta Gialla");
+            AssertEqual("ALLERTA VENTO", windAlert.Title, "Titolo allerta vento");
+
+            // 4. Raffiche estreme 82 km/h -> Red (RAFFICHE FORTI)
+            var extremeWind = new WeatherSnapshot
+            {
+                TemperatureC = 14.0,
+                WeatherCode = 3,
+                IsDay = true,
+                WindSpeedKmh = 52.0,
+                WindGustsKmh = 82.0
+            };
+            WeatherAlertInfo extremeWindAlert = WeatherService.EvaluateWeatherAlert(extremeWind, TemperatureUnit.Celsius, baseNow);
+            AssertEqual(WeatherAlertLevel.Red, extremeWindAlert.Level, "Raffiche 82 km/h -> Allerta Rossa");
+            AssertEqual("RAFFICHE FORTI", extremeWindAlert.Title, "Titolo raffiche forti");
+
+            // 5. Temporale WMO 95 -> Red (TEMPORALE)
+            var storm = new WeatherSnapshot { TemperatureC = 16.0, WeatherCode = 95, IsDay = true };
+            WeatherAlertInfo stormAlert = WeatherService.EvaluateWeatherAlert(storm, TemperatureUnit.Celsius, baseNow);
+            AssertEqual(WeatherAlertLevel.Red, stormAlert.Level, "WMO 95 -> Allerta Rossa");
+            AssertEqual("TEMPORALE", stormAlert.Title, "Titolo temporale");
+
+            // 6. Parsing wind_gusts_10m + persistenza EnableWeatherAlerts
+            string url = WeatherService.BuildForecastUrl(45.4642, 9.19);
+            AssertTrue(url.Contains("wind_gusts_10m", StringComparison.Ordinal), "URL Open-Meteo deve includere wind_gusts_10m");
+
+            const string gustJson = """
+            {
+              "current": { "temperature_2m": 12.0, "apparent_temperature": 10.0, "weather_code": 3, "is_day": 1, "wind_speed_10m": 32.0, "wind_gusts_10m": 64.5, "relative_humidity_2m": 70, "uv_index": 2.0 },
+              "hourly": {
+                "time": ["2026-11-20T13:00"],
+                "temperature_2m": [12.0],
+                "weather_code": [3],
+                "precipitation_probability": [20],
+                "wind_speed_10m": [34.0],
+                "wind_gusts_10m": [68.2],
+                "is_day": [1]
+              },
+              "daily": {
+                "time": ["2026-11-20"],
+                "weather_code": [3],
+                "temperature_2m_max": [14.0],
+                "temperature_2m_min": [6.0],
+                "precipitation_probability_max": [20],
+                "wind_speed_10m_max": [34.0],
+                "wind_gusts_10m_max": [70.0]
+              }
+            }
+            """;
+            WeatherSnapshot parsed = WeatherService.ParseForecastJson(gustJson, "Milano", baseNow);
+            AssertTrue(Math.Abs(parsed.WindGustsKmh - 64.5) < 0.01, "Raffiche correnti estratte");
+            AssertTrue(Math.Abs(parsed.NextHours[0].WindGustsKmh - 68.2) < 0.01, "Raffiche orarie estratte");
+            AssertTrue(Math.Abs(parsed.Daily[0].WindGustsMaxKmh - 70.0) < 0.01, "Raffiche max daily estratte");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "DskWeatherTests_Alert_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var svc = new SettingsService(tempDir);
+                var cfg = new WidgetSettings { EnableWeatherAlerts = false };
+                svc.Save(cfg);
+                WidgetSettings reloaded = svc.Load();
+                AssertEqual(false, reloaded.EnableWeatherAlerts, "Persistenza EnableWeatherAlerts = false");
+            }
+            finally
+            {
+                if (Directory.Exists(tempDir))
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            }
         }
 
         private static byte[] CreateSolidBgraBuffer(int pixelCount, byte b, byte g, byte r, byte a)

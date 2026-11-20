@@ -842,6 +842,11 @@
                                           Style="{StaticResource MaterialSwitchStyle}"
                                           Checked="SettingCheck_Changed"
                                           Unchecked="SettingCheck_Changed" />
+                                <CheckBox x:Name="EnableWeatherAlertsCheck"
+                                          Content="Mostra allerte meteo (bordo giallo/rosso)"
+                                          Style="{StaticResource MaterialSwitchStyle}"
+                                          Checked="SettingCheck_Changed"
+                                          Unchecked="SettingCheck_Changed" />
 
                                 <Grid Margin="0,8,0,10">
                                     <Grid.ColumnDefinitions>
